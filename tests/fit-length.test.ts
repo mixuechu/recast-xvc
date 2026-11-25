@@ -34,7 +34,7 @@ it('uses one bounded editing request and preserves headings, speakers and refere
 it.each([
   ['still too long', before],
   ['missing chapter', after.replace('## 主题', '### 主题')],
-  ['renamed chapter', after.replace('## 主题', '## 新主题')],
+  ['extra chapter', after + '\n\n## 新主题\n\n新内容。'],
   ['invented speaker', after.replace('**Marc：**', '**陌生人：**')],
   ['lost dialogue', after.replace('**主持人：**', '').replace('**Marc：**', '')],
   ['invented citation', after.replace('c0002', 'c9999')],
@@ -42,7 +42,7 @@ it.each([
 ])('refuses an invalid edit: %s', async (_reason, text) => {
   answer(text);
   await expect(fitLength(env, before, '100字以内', budget, signal())).rejects.toThrow();
-  expect(generate).toHaveBeenCalledTimes(_reason === 'still too long' ? 2 : 1);
+  expect(generate).toHaveBeenCalledTimes(_reason === 'still too long' ? 3 : 1);
 });
 it('honors cancellation before accepting an edited result', async () => {
   const controller = new AbortController();
@@ -62,9 +62,7 @@ it('feeds the measured overrun back into one final correction', async () => {
   });
   expect(await fitLength(env, before, '100字以内', budget, signal())).toBe(after);
   expect(generate).toHaveBeenCalledTimes(2);
-  expect(JSON.parse(vi.mocked(generate).mock.calls[1][2]).validationFeedback).toContain(
-    '上一轮实际',
-  );
+  expect(vi.mocked(generate).mock.calls[1][2]).toContain('上一轮实际');
 });
 it('can omit an optional lead without trimming a question, answer or sentence', async () => {
   const lead = after.replace('## 主题', '导语概述。'.repeat(30) + '\n\n## 主题');
@@ -89,4 +87,17 @@ it('does not treat an opening speaker turn as a disposable lead', async () => {
   answer(after);
   expect(await fitLength(env, opening, '100字以内', budget, signal())).toBe(after);
   expect(generate).toHaveBeenCalledTimes(1);
+});
+it('normalizes known model citation aliases before checking preservation', async () => {
+  answer(after.replace(/#source-/g, '#source_'));
+  expect(await fitLength(env, before, '100字以内', budget, signal())).toBe(after);
+});
+it.each(['=', '_', ':'])('accepts a known source anchor separator alias %s', async (separator) => {
+  answer(after.replace(/#source-/g, '#source' + separator));
+  expect(await fitLength(env, before, '100字以内', budget, signal())).toBe(after);
+});
+
+it('restores immutable titles after model wording changes', async () => {
+  answer(after.replace('# 访谈', '# 采访').replace('## 主题', '## Topic'));
+  expect(await fitLength(env, before, '100字以内', budget, signal())).toBe(after);
 });

@@ -1,4 +1,6 @@
-ZHIPU_API_KEY=replace_locally
+DEEPSEEK_API_KEY=replace_locally
+# Optional: set AI_PROVIDER=zhipu and AI_MODEL=glm-4.7 to use Zhipu
+# ZHIPU_API_KEY=replace_locally
 SUPADATA_API_KEY=replace_locally
 # Optional: shared access code for the public review deployment
 # APP_ACCESS_TOKEN=choose_a_review_code

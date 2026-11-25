@@ -1,5 +1,6 @@
 import type { Env } from './env';
 import { body, json, message } from './http';
+import { modelKey } from './ai';
 export { ArticleSession } from './session/ArticleSession';
 export { TranscriptCache } from './TranscriptCache';
 export { Quota } from './Quota';
@@ -15,7 +16,7 @@ export default {
           model: env.AI_MODEL,
           transcriptProvider: env.SUPADATA_API_KEY ? 'supadata' : 'direct',
           accessRequired: !!env.APP_ACCESS_TOKEN,
-          configured: !!(env.AI_PROVIDER === 'gemini' ? env.GEMINI_API_KEY : env.ZHIPU_API_KEY),
+          configured: !!modelKey(env),
         });
       else {
         if (request.headers.get('origin') && request.headers.get('origin') !== url.origin)

@@ -238,7 +238,12 @@ export function SourcePanel({ model }: { model: Workbench }) {
       <div className="side-footer">
         <span className="provider-mark">AI</span>
         <span>
-          {config?.provider === 'gemini' ? 'Gemini' : '智谱 GLM'} 驱动
+          {config?.provider === 'gemini'
+            ? 'Gemini'
+            : config?.provider === 'deepseek'
+              ? 'DeepSeek'
+              : '智谱 GLM'}{' '}
+          驱动
           <span className="footer-sub">忠于原意，保留思考</span>
         </span>
       </div>

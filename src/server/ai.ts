@@ -4,7 +4,20 @@ export type AIEnv = {
   AI_MODEL: string;
   ZHIPU_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
 };
+export function modelKey(env: AIEnv): string | undefined {
+  switch (env.AI_PROVIDER) {
+    case 'gemini':
+      return env.GEMINI_API_KEY;
+    case 'deepseek':
+      return env.DEEPSEEK_API_KEY;
+    case 'zhipu':
+      return env.ZHIPU_API_KEY;
+    default:
+      throw new Error('模型服务配置无效，请检查 AI_PROVIDER。');
+  }
+}
 export async function* generate(
   env: AIEnv,
   system: string,
@@ -13,12 +26,16 @@ export async function* generate(
   json = false,
 ): AsyncGenerator<string> {
   const gemini = env.AI_PROVIDER === 'gemini';
-  const key = gemini ? env.GEMINI_API_KEY : env.ZHIPU_API_KEY;
+  const deepseek = env.AI_PROVIDER === 'deepseek';
+  const key = modelKey(env);
   if (!key) throw new Error('服务端尚未配置模型密钥，请联系部署者。');
-  const model = env.AI_MODEL || (gemini ? 'gemini-2.5-flash' : 'glm-4.7');
+  const model =
+    env.AI_MODEL || (gemini ? 'gemini-2.5-flash' : deepseek ? 'deepseek-flash' : 'glm-4.7');
   const endpoint = gemini
     ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`
-    : 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+    : deepseek
+      ? 'https://api.deepseek.com/chat/completions'
+      : 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
   const response = await fetch(endpoint, {
     method: 'POST',
     signal,

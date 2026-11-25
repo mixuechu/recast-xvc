@@ -5,7 +5,7 @@
 - [在线体验](https://recast-xvc.mixuechu.workers.dev)（访问码由维护者单独提供）
 - [使用说明](docs/USAGE.md) · [架构与代码走读](docs/ARCHITECTURE.md) · [实测记录](docs/VALIDATION.md)
 
-**模型差异：题目指定 Gemini，当前线上使用智谱 GLM-4.7。** 已实现 Gemini 流式和结构化响应适配、协议测试，但尚无真实 Gemini 账号联调。提交时必须说明并取得认可，或配置 Gemini 后重新验收，不能把智谱结果称为 Gemini 实测结果。
+**模型差异：题目指定 Gemini，当前线上使用 DeepSeek `deepseek-flash`，智谱 GLM-4.7 接入及密钥配置保留。** 已实现 Gemini 流式和结构化响应适配、协议测试，但尚无真实 Gemini 账号联调。提交时必须说明并取得认可，或配置 Gemini 后重新验收，不能把其他模型结果称为 Gemini 实测结果。
 
 ## 启动与部署
 
@@ -14,7 +14,7 @@
 ```sh
 npm ci
 cp .dev.vars.example .dev.vars  # 已有配置时不要覆盖
-# 填写 SUPADATA_API_KEY、ZHIPU_API_KEY；公开部署可设置 APP_ACCESS_TOKEN
+# 填写 SUPADATA_API_KEY、DEEPSEEK_API_KEY；公开部署可设置 APP_ACCESS_TOKEN
 npm run dev
 ```
 
@@ -23,7 +23,8 @@ npm run dev
 ```sh
 npx wrangler login
 npx wrangler secret put SUPADATA_API_KEY
-npx wrangler secret put ZHIPU_API_KEY
+npx wrangler secret put DEEPSEEK_API_KEY
+# 可保留 ZHIPU_API_KEY，切回智谱时使用
 npx wrangler secret put APP_ACCESS_TOKEN
 npm run deploy
 ```
@@ -34,9 +35,9 @@ npm run deploy
 
 **YouTube 字幕。** 服务端优先使用 [Supadata](https://docs.supadata.ai/get-transcript) 的 `native` 模式，只读取视频已有字幕；优先选择英文字幕（无英文时由服务返回可用字幕，并显示实际语言），统一转换毫秒时间轴、分配稳定片段编号、视频字幕限制为150,000字符及6,000片段，手动输入限制为100,000字符。不自动触发音频转录。成功结果按视频缓存24小时，同视频并发合并，失败不缓存。未配置此服务时保留直接读取适配器，但 YouTube 可能拒绝 Cloudflare 出口。可手动导入 SRT、VTT 或文本；不把演示素材或快照冒充目标视频的实时结果。
 
-**模型与流式。** `server/ai.ts` 通过 Fetch 调用 Gemini `streamGenerateContent?alt=sse` 或智谱流式接口，统一解析 UTF-8 分片、SSE 增量及结束状态。Worker 将真实增量传给浏览器，Markdown 经 DOMPurify 清洗后渲染，支持停止、断流提示和部分内容保留。
+**模型与流式。** `server/ai.ts` 通过 Fetch 调用 Gemini `streamGenerateContent?alt=sse` 、DeepSeek 或智谱流式接口，统一解析 UTF-8 分片、SSE 增量及结束状态。Worker 将真实增量传给浏览器，Markdown 经 DOMPurify 清洗后渲染，支持停止、断流提示和部分内容保留。
 
-**生成要求。** 用户要求作为独立数据传入模型，影响任务、风格、受众、篇幅与重点，不能覆盖事实忠实性。多人素材保留对话，单人讲述不虚构问答。明确章节数量通过纯函数重组已有段落，避免再次调用模型重写；精确字数和事实质量仍需人工核对。
+**生成要求。** 用户要求作为独立数据传入模型，影响任务、风格、受众、篇幅与重点，不能覆盖事实忠实性。多人素材保留对话，单人讲述不虚构问答。明确章节数量通过纯函数重组已有段落，避免再次调用模型重写；事实质量仍需人工核对。
 
 **章节 5W1H。** 每次生成的字幕、文章与章节保存在独立 SQLite Durable Object。浏览器只提交 `chapterId`；服务器结合完整字幕和当前章节生成六个结构化字段，检查引用编号，缺失的信息显示“未明确提及”。同章结果缓存、并发合并，以固定格式展示。
 
@@ -61,10 +62,12 @@ TEST_BASE_URL=http://localhost:8787 TEST_ACCESS_CODE=你的访问码 node tests/
 
 CI执行不含真实密钥的检查与部署 dry-run，不自动发布网站。真实服务样本、通过范围和未验证事项见[验收记录](docs/VALIDATION.md)。
 
-## 篇幅控制升级（开发分支，尚未发布）
+## 篇幅控制
 
-`quality-v2` 新增程序验收：约1500字按1350–1650字验收，1500字以内作为硬上限，1000–1500字按范围验收。仅解析明确的全文篇幅；单个标题、每章或每段的字数仍作为模型指令。页面与服务端使用同一可读字符统计，包含标题、讲者名、标点、英文字母和数字，不含空白、Markdown语法和原文引用链接。
+明确的总篇幅要求由程序验收：约1500字按1350–1650字验收，1500字以内作为硬上限，1000–1500字按范围验收。仅解析明确的全文篇幅；单个标题、每章或每段的字数仍作为模型指令。页面与服务端使用同一可读字符统计，包含标题、讲者名、标点、英文字母和数字，不含空白、Markdown语法和原文引用链接。
 
-初稿不达标时，最多进行两次带实际计数反馈的篇幅编辑，保留章节、讲者与已有引用。可选导语仅在整段省略后恰好达标且用户未要求保留时移除，不截断正文句子。最终字数、结构与引用验证通过才标为完成；编辑失败或模型限流时保留初稿并提示，不无限重试、不填充文字凑字数。
+初稿不达标时，最多进行三次带实际计数反馈的篇幅编辑，保留章节、讲者与已有引用。可选导语仅在整段省略后恰好达标且用户未要求保留时移除，不截断正文句子。最终字数、结构与引用验证通过才标为完成；编辑失败或模型限流时保留初稿并提示，不无限重试、不填充文字凑字数。
 
-当前已完成离线测试与旧真实输出的回放验证。智谱持续返回1302账户限流，完整在线联调未通过，因此此升级尚未部署；线上仍是前一验收版本。恢复后须用原题视频重新验证，再合入 `main` 发布。
+DeepSeek真实编辑测试：3465字稿件按“约1500字”调整为1428字，按“不超过1200字”调整为985字，四章节、讲者与引用保护通过。原题视频完整链路得到1557字，四章节、对话、引用与5W1H通过；详细范围见[验证记录](docs/VALIDATION.md)。
+
+模型切换只需更改服务端 `AI_PROVIDER` / `AI_MODEL` 并配置对应密钥：`deepseek` / `deepseek-flash` / `DEEPSEEK_API_KEY`；`zhipu` / `glm-4.7` / `ZHIPU_API_KEY`；`gemini` / 账户可用模型 / `GEMINI_API_KEY`。不会在缺少当前厂商密钥时偷偷切到另一家。

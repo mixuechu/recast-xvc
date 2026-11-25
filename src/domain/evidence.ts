@@ -1,4 +1,13 @@
 import { dimensions, type Caption, type CitedSummary } from '../shared';
+export function normalizeCitationLinks(markdown: string, known: ReadonlySet<string>): string {
+  return markdown.replace(
+    /\[([^\]]*)\]\(#(?:source[-_=:])?(c\d{4,})\)/g,
+    (_link, label: string, id: string) => {
+      if (!known.has(id)) throw new Error('文章引用了不存在的原文片段，已保留正文，请重新生成。');
+      return `[${label}](#source-${id})`;
+    },
+  );
+}
 export function citationIds(markdown: string): string[] {
   return [...new Set([...markdown.matchAll(/\]\(#source-(c\d+)\)/g)].map((m) => m[1]))];
 }

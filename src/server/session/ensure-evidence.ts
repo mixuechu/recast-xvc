@@ -1,5 +1,5 @@
 import type { Source } from '../../shared';
-import { citationIds, validCitations } from '../../domain/evidence';
+import { citationIds, validCitations, normalizeCitationLinks } from '../../domain/evidence';
 import { generate, type AIEnv } from '../ai';
 import { sourceText } from '../transcript';
 const system = `你是原文引用核对员。为提供的中文段落选择确实支持其内容的字幕编号。不能改写段落，不能使用不存在的编号，不能根据常识补证据。无支持内容时返回空数组。
@@ -10,12 +10,10 @@ export async function ensureEvidence(
   markdown: string,
   signal: AbortSignal,
 ): Promise<string> {
-  // Models sometimes omit the source- prefix; normalize only known cue anchors.
-  markdown = markdown.replace(/\[([^\]]*)\]\(#(c\d{4,})\)/g, (_link, label: string, id: string) => {
-    if (!source.captions.some((c) => c.id === id))
-      throw new Error('文章引用了不存在的原文片段，已保留正文，请重新生成。');
-    return `[${label}](#source-${id})`;
-  });
+  markdown = normalizeCitationLinks(
+    markdown,
+    new Set(source.captions.flatMap((c) => (c.id ? [c.id] : []))),
+  );
   const paragraphs = markdown.split(/\n\s*\n/);
   const missing = paragraphs
     .map((text, i) => ({ id: `p${i}`, text }))

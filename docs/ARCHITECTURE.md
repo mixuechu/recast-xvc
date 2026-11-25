@@ -15,18 +15,18 @@ flowchart LR
 
 ## 模块与走读顺序
 
-| 顺序 | 文件                                                 | 职责                               |
-| ---- | ---------------------------------------------------- | ---------------------------------- |
-| 1    | `src/shared.ts`                                      | 来源、文章、结构化总结与流事件契约 |
-| 2    | `src/client/SourcePanel.tsx`、`useWorkbench.ts`      | 输入、增量展示、取消、恢复与导出   |
-| 3    | `src/server/index.ts`                                | 同源、访问码、请求边界与路由       |
-| 4    | `src/server/transcript.ts`、`TranscriptCache.ts`     | 素材入口、每视频缓存、并发合并     |
-| 5    | `src/server/supadata.ts`、`youtube.ts`               | 网络适配、错误、来源和时间轴       |
-| 6    | `src/server/session/ArticleSession.ts`               | 会话生命周期、流式检查点、持久化   |
-| 7    | `src/server/ai.ts`、`src/protocol/sse.ts`            | Gemini/智谱流式协议与完成状态      |
-| 8    | `src/domain`、`session/ensure-evidence.ts`           | 字幕、章节要求与引用边界           |
-| 9    | `session/summarize.ts`、`client/hooks/useSummary.ts` | 只传章节ID的5W1H与缓存             |
-| 10   | `client/hooks/useEvidence.ts`、`SourceEvidence.tsx`  | 搜索、引用定位、时间跳转           |
+| 顺序 | 文件                                                 | 职责                                   |
+| ---- | ---------------------------------------------------- | -------------------------------------- |
+| 1    | `src/shared.ts`                                      | 来源、文章、结构化总结与流事件契约     |
+| 2    | `src/client/SourcePanel.tsx`、`useWorkbench.ts`      | 输入、增量展示、取消、恢复与导出       |
+| 3    | `src/server/index.ts`                                | 同源、访问码、请求边界与路由           |
+| 4    | `src/server/transcript.ts`、`TranscriptCache.ts`     | 素材入口、每视频缓存、并发合并         |
+| 5    | `src/server/supadata.ts`、`youtube.ts`               | 网络适配、错误、来源和时间轴           |
+| 6    | `src/server/session/ArticleSession.ts`               | 会话生命周期、流式检查点、持久化       |
+| 7    | `src/server/ai.ts`、`src/protocol/sse.ts`            | Gemini/DeepSeek/智谱流式协议与完成状态 |
+| 8    | `src/domain`、`session/ensure-evidence.ts`           | 字幕、章节要求与引用边界               |
+| 9    | `session/summarize.ts`、`client/hooks/useSummary.ts` | 只传章节ID的5W1H与缓存                 |
+| 10   | `client/hooks/useEvidence.ts`、`SourceEvidence.tsx`  | 搜索、引用定位、时间跳转               |
 
 ## 工程判断
 
@@ -35,10 +35,10 @@ flowchart LR
 - 主文章是真流式输出，连接提前中断不能冒充成功。中断会保存部分正文，只有结构和引用校验通过才标为完成。
 - 模型偶尔忽略精确章节数，使用纯函数重组已有段落；缺失引用一次批量请求结构化补全，最多24段，并校验输入段落与返回结果一一对应，不以伪造编号掩盖失败。
 - 服务端保留完整来源与章节上下文，5W1H 不依赖前端重传正文。同章并发合并，未提到的信息明确为空；引用编号存在不等于语义已自动证明。
-- ASR 与媒体服务已从交付版本移除，保留原文核对。Gemini适配保留，但真实验收目前使用智谱；模型差异必须说明。
+- ASR 与媒体服务已从交付版本移除，保留原文核对。Gemini适配保留，但当前驱动使用DeepSeek，智谱接入保留；模型差异必须说明。
 
-## 篇幅控制开发分支
+## 篇幅控制
 
-`domain/length.ts` 解析明确的总篇幅、合并上下限并拒绝冲突；与界面共用 `requirements.readableLength` 统计。`session/fit-length.ts` 负责最多两轮编辑，将真实字数差反馈给模型、校准内部写作预算，并验证章节标题/顺序、讲者及原有引用。编辑只基于初稿，不能引入新事实或引用编号；语义仍须人工核对。
+`domain/length.ts` 解析明确的总篇幅、合并上下限并拒绝冲突；与界面共用 `requirements.readableLength` 统计。`session/fit-length.ts` 负责最多三轮编辑，将真实字数差反馈给模型、校准内部写作预算，由程序保留原标题，并验证章节结构/顺序对应的引用、讲者及原有引用。编辑只基于初稿，不能引入新事实或引用编号；语义仍须人工核对。
 
-短时间超额可以通过整段省略可选导语解决，不能裁掉正文句子或开场讲者发言。用户要求保留导语时不删除。失败不覆盖初稿，不标记完成；最后在引用补全后再次校验总字数。未指定明确总篇幅的请求保持原流程。此分支待真实模型联调后发布。
+小幅超限可以通过整段省略可选导语解决，不能裁掉正文句子或开场讲者发言。用户要求保留导语时不删除。失败不覆盖初稿，不标记完成；最后在引用补全后再次校验总字数。未指定明确总篇幅的请求保持原流程。篇幅调整通过独立模块处理，模型厂商切换复用同一套验收。
