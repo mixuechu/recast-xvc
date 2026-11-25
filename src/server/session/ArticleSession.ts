@@ -10,7 +10,9 @@ import type { StoredArticle, GenerateInput } from './types';
 import { summarize } from './summarize';
 import { ensureEvidence } from './ensure-evidence';
 import { applyOutline } from '../../domain/outline';
-import { requestedChapters } from '../../domain/requirements';
+import { requestedChapters, readableLength } from '../../domain/requirements';
+import { requestedLength, withinLength, lengthDescription } from '../../domain/length';
+import { fitLength } from './fit-length';
 const ttl = 86400000;
 export class ArticleSession extends DurableObject<Env> {
   private aborter?: AbortController;
@@ -127,6 +129,7 @@ export class ArticleSession extends DurableObject<Env> {
           (async () => {
             try {
               emit('session', { id });
+              const lengthBudget = requestedLength(input.requirements);
               emit('status', { message: '正在读取字幕' });
               const source = await getSource(
                 input,
@@ -154,6 +157,9 @@ export class ArticleSession extends DurableObject<Env> {
                 title: source.title,
                 transcript: sourceText(source),
                 requestedChapterCount: requestedChapters(input.requirements),
+                lengthBudget: lengthBudget
+                  ? { ...lengthBudget, allowed: lengthDescription(lengthBudget) }
+                  : undefined,
                 userRequirements:
                   input.requirements || '按主题整理为中文文章，保留讲者的论证与细节。',
                 finalReminder:
@@ -174,6 +180,18 @@ export class ArticleSession extends DurableObject<Env> {
               signal.throwIfAborted();
               emit('status', { message: '正在整理章节结构' });
               record.markdown = applyOutline(record.markdown, input.requirements);
+              if (lengthBudget && !withinLength(readableLength(record.markdown), lengthBudget)) {
+                emit('status', {
+                  message: `正在调整篇幅（目标${lengthDescription(lengthBudget)}）`,
+                });
+                record.markdown = await fitLength(
+                  this.env,
+                  record.markdown,
+                  input.requirements,
+                  lengthBudget,
+                  signal,
+                );
+              }
               emit('status', { message: '正在核对原文引用' });
               record.markdown = await ensureEvidence(this.env, source, record.markdown, signal);
               signal.throwIfAborted();
@@ -187,6 +205,8 @@ export class ArticleSession extends DurableObject<Env> {
               )
                 throw new Error('模型引用了不存在的原文片段，请重新生成。');
               record.citationCount = validCitations(record.markdown, source.captions).length;
+              if (lengthBudget && !withinLength(readableLength(record.markdown), lengthBudget))
+                throw new Error('最终字数未满足篇幅要求，已保留正文，请重试。');
               record.status = 'complete';
               await this.ctx.storage.put('article', record);
               emit('done', {
