@@ -30,7 +30,7 @@ npm run dev
 
 首页示例是 MIT OCW 的 [What is Computation?](https://www.youtube.com/watch?v=nykOeWgQcHM)，讲者 Dr. Ana Bell。它与其他视频使用相同的字幕获取流程，不再自动替换成发布方字幕或本地快照。
 
-推荐配置 `SUPADATA_API_KEY`，使用 [Supadata 的 native 模式](https://docs.supadata.ai/get-transcript)获取视频现有字幕，不触发音频转录。未配置时保留直接读取适配器，但 Cloudflare 出口可能被 YouTube 拒绝。新服务的实际成功率须另行联调，不以协议测试代替真实验收。成功字幕按视频与服务缓存24小时，同视频并发合并；失败不缓存。
+线上已配置 `SUPADATA_API_KEY`，使用 [Supadata 的 native 模式](https://docs.supadata.ai/get-transcript)获取视频现有字幕，不触发音频转录。未配置时保留直接读取适配器，但 Cloudflare 出口可能被 YouTube 拒绝。已在 Cloudflare 实测四个公开视频的字幕读取，并完成 3Blue1Brown 视频的文章、原文引用与章节5W1H链路；这些样本通过不代表所有视频均可读取。成功字幕按视频与服务缓存24小时，同视频并发合并；失败不缓存。
 
 获取失败时可以导入 SRT、VTT 或纯文本。原创合成示例仍有明确标记，不冒充真实视频。MIT真实音频测试片段采用CC BY-NC-SA 4.0，来源与处理见 [音频说明](tests/fixtures/MEDIA-LICENSE.md)。
 
