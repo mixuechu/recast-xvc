@@ -12,8 +12,6 @@ type Config = {
   model: string;
   configured: boolean;
   accessRequired: boolean;
-  recognitionConfigured: boolean;
-  audioUploadConfigured: boolean;
 };
 export function useWorkbench() {
   const [mode, setMode] = useState<'youtube' | 'sample' | 'manual'>('youtube');
@@ -103,14 +101,10 @@ export function useWorkbench() {
         ...previous.filter((x) => x.id !== data.id),
       ].slice(0, 8),
     );
-  const start = async (
-    sample = false,
-    revision?: { fromSessionId: string; reviewVersion: number },
-    videoUrl?: string,
-  ) => {
+  const start = async (sample = false, videoUrl?: string) => {
     if (busy) return;
     restoreEpoch.current++;
-    const selected = revision ? 'revision' : videoUrl ? 'youtube' : sample ? 'sample' : mode;
+    const selected = videoUrl ? 'youtube' : sample ? 'sample' : mode;
     try {
       if (selected === 'youtube') videoId(videoUrl ?? url);
       if (selected === 'manual' && transcript.trim().length < 80)
@@ -139,7 +133,6 @@ export function useWorkbench() {
           url: videoUrl ?? url,
           transcript,
           requirements,
-          ...revision,
         }),
       });
       if (!response.body) throw new Error('未收到生成响应，请重试。');
@@ -161,8 +154,6 @@ export function useWorkbench() {
             createdAt: Date.now(),
             expiresAt: Date.now() + 86400000,
             status: 'generating',
-            parentId: revision?.fromSessionId,
-            sourceRevision: revision?.reviewVersion ?? 1,
           };
           setArticle({ ...next });
           remember(next);
@@ -207,12 +198,7 @@ export function useWorkbench() {
     const link = 'https://www.youtube.com/watch?v=nykOeWgQcHM';
     setMode('youtube');
     setUrl(link);
-    void start(false, undefined, link);
-  };
-  const generateReviewed = () => {
-    if (!article || !evidence.review) return;
-    evidence.setOpen(false);
-    void start(false, { fromSessionId: article.id, reviewVersion: evidence.review.version });
+    void start(false, link);
   };
   const cancel = async () => {
     if (currentId.current)
@@ -251,7 +237,6 @@ export function useWorkbench() {
   return {
     ...summaries,
     evidence,
-    generateReviewed,
     startRealExample,
     mode,
     setMode,

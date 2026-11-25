@@ -11,8 +11,7 @@
     "preview": "wrangler dev --port 8787",
     "deploy": "npm run build && wrangler deploy",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "dev:asr": "npm run build && node scripts/dev-asr.mjs"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "dompurify": "3.5.0",

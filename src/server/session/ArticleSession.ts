@@ -8,18 +8,14 @@ import { json, message } from '../http';
 import type { Env } from '../env';
 import type { StoredArticle, GenerateInput } from './types';
 import { summarize } from './summarize';
-import { Reviews } from './reviews';
 import { ensureEvidence } from './ensure-evidence';
 import { applyOutline } from '../../domain/outline';
 import { requestedChapters } from '../../domain/requirements';
-import { SessionAudio } from './audio';
 const ttl = 86400000;
 export class ArticleSession extends DurableObject<Env> {
   private aborter?: AbortController;
   private deleted = false;
   private pending = new Map<string, Promise<CitedSummary>>();
-  private audio = new SessionAudio(this.ctx.storage, this.env);
-  private reviews = new Reviews(this.ctx.storage, this.env);
   async alarm() {
     const article = await this.ctx.storage.get<StoredArticle>('article');
     if (!article || article.expiresAt <= Date.now()) {
@@ -28,20 +24,7 @@ export class ArticleSession extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       return;
     }
-    await this.audio.expire();
-    await this.reviews.poll(article);
-    await this.schedule(article.expiresAt);
-  }
-  private async schedule(expiresAt: number) {
-    const task = await this.reviews.recognition();
-    const next =
-      task && ['queued', 'running'].includes(task.status)
-        ? Math.min(task.nextPollAt, expiresAt)
-        : expiresAt;
-    const audio = await this.audio.info();
-    await this.ctx.storage.setAlarm(
-      Math.max(Date.now() + 1000, Math.min(next, audio?.expiresAt ?? expiresAt)),
-    );
+    await this.ctx.storage.setAlarm(article.expiresAt);
   }
   async fetch(request: Request): Promise<Response> {
     try {
@@ -69,7 +52,6 @@ export class ArticleSession extends DurableObject<Env> {
       await this.ctx.storage.put('article', stored);
     }
     if (url.pathname === '/article' && request.method === 'DELETE') {
-      await this.audio.destroy();
       this.deleted = true;
       this.aborter?.abort();
       await this.ctx.storage.deleteAll();
@@ -83,63 +65,11 @@ export class ArticleSession extends DurableObject<Env> {
       }
       return json({ ...stored, source: { ...stored.source, captions: undefined } });
     }
-    if (url.pathname === '/audio-file') return this.audio.file(request);
-    if (url.pathname === '/audio') {
-      if (request.method === 'GET') return json(await this.audio.info());
-      const info = await this.audio.upload(request, stored);
-      await this.schedule(stored.expiresAt);
-      return json(info);
-    }
     if (url.pathname === '/source') return json(stored.source);
     if (url.pathname === '/summary' && stored.status !== 'complete')
-      return json({ error: '文章完整生成后才能总结或校对。' }, 409);
+      return json({ error: '文章完整生成后才能总结。' }, 409);
     if (url.pathname === '/summary')
       return this.summary(stored, ((await request.json()) as { chapterId?: string }).chapterId);
-    if (url.pathname === '/review') {
-      if (request.method === 'GET') return json((await this.reviews.get()) ?? null);
-      const input = (await request.json()) as {
-        action: string;
-        transcript?: string;
-        version: number;
-        changes: Parameters<Reviews['resolve']>[1];
-      };
-      if (input.action === 'import') {
-        if (typeof input.transcript !== 'string') throw new Error('请导入候选字幕。');
-        const task = await this.reviews.recognition();
-        if (task && ['queued', 'running'].includes(task.status))
-          throw new Error('请先停止等待正在进行的辅助识别，再导入字幕。');
-        return json(await this.reviews.import(stored, input.transcript));
-      }
-      if (input.action === 'resolve')
-        return json(await this.reviews.resolve(input.version, input.changes));
-      throw new Error('校对操作无效。');
-    }
-    if (url.pathname === '/revision-export') {
-      const { version } = (await request.json()) as { version: number };
-      return json(await this.reviews.exportSource(stored, version));
-    }
-    if (url.pathname === '/recognition') {
-      if (request.method === 'GET') {
-        const task = await this.reviews.recognition();
-        return json(task ? task : null);
-      }
-      if (request.method === 'DELETE') {
-        await this.reviews.cancel();
-        await this.schedule(stored.expiresAt);
-        return json({ ok: true });
-      }
-      const { audioUrl, action, format } = (await request.json()) as {
-        audioUrl?: string;
-        action?: string;
-        format?: string;
-      };
-      const task =
-        action === 'resume'
-          ? await this.reviews.resume()
-          : await this.reviews.recognize(stored, audioUrl, format);
-      await this.schedule(stored.expiresAt);
-      return json(task);
-    }
     return json({ error: '接口不存在。' }, 404);
   }
   private async summary(stored: StoredArticle, chapterId?: string) {
@@ -198,13 +128,11 @@ export class ArticleSession extends DurableObject<Env> {
             try {
               emit('session', { id });
               emit('status', { message: '正在读取字幕' });
-              const source =
-                input.resolvedSource ??
-                (await getSource(
-                  input,
-                  AbortSignal.any([signal, AbortSignal.timeout(40000)]),
-                  this.env,
-                ));
+              const source = await getSource(
+                input,
+                AbortSignal.any([signal, AbortSignal.timeout(40000)]),
+                this.env,
+              );
               signal.throwIfAborted();
               record = {
                 id,
@@ -217,19 +145,19 @@ export class ArticleSession extends DurableObject<Env> {
                 status: 'generating',
                 createdAt: Date.now(),
                 expiresAt: Date.now() + ttl,
-                sourceRevision: input.reviewVersion ?? 1,
-                parentId: input.parentId,
               };
               await this.ctx.storage.put('article', record);
-              await this.schedule(record.expiresAt);
+              await this.ctx.storage.setAlarm(record.expiresAt);
               emit('source', { ...source, captions: undefined });
               emit('status', { message: '正在整理文章' });
               const prompt = JSON.stringify({
                 title: source.title,
+                transcript: sourceText(source),
                 requestedChapterCount: requestedChapters(input.requirements),
                 userRequirements:
                   input.requirements || '按主题整理为中文文章，保留讲者的论证与细节。',
-                transcript: sourceText(source),
+                finalReminder:
+                  '输出前检查本次生成要求，尤其是对话形式、篇幅与章节数量。用户指定的篇幅优先于默认长度，必要时压缩细节，不要因为保留对话而扩写。需要保留访谈时，用 **讲者：** 开头的真实问答，不得写成第三人称综述，也不得编造提问。每个正文段落（包括提问）末尾都必须附真实字幕引用，格式 [原文](#source-c0001)，编号取自字幕。',
               });
               let checkpoint = Date.now();
               for await (const delta of generate(this.env, articleSystem, prompt, signal)) {

@@ -9,7 +9,4 @@ export type GenerateInput = {
   url?: string;
   transcript?: string;
   requirements: string;
-  resolvedSource?: Source;
-  parentId?: string;
-  reviewVersion?: number;
 };

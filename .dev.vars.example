@@ -1,17 +1,6 @@
 ZHIPU_API_KEY=replace_locally
-# Optional: shared review code to protect a public deployment
+SUPADATA_API_KEY=replace_locally
+# Optional: shared access code for the public review deployment
 # APP_ACCESS_TOKEN=choose_a_review_code
 # Gemini: set AI_PROVIDER=gemini and AI_MODEL in wrangler.jsonc
 # GEMINI_API_KEY=replace_locally
-# Volcengine ASR (separate entitlement from TTS)
-# VOLC_ASR_API_KEY=replace_locally
-# VOLC_ASR_RESOURCE_ID=volc.seedasr.auc
-
-# Optional: external audio callback origin. Local npm run dev:asr sets this automatically.
-# PUBLIC_BASE_URL=https://your-worker.example.com
-# Optional: independent temporary audio storage for ASR downloads
-# MEDIA_GATEWAY_URL=https://recast-media.inventory.mimimiai.com
-# MEDIA_GATEWAY_SECRET=replace_with_server_shared_secret_at_least_32_characters
-
-# Recommended: native YouTube captions via Supadata (no ASR fallback)
-# SUPADATA_API_KEY=replace_locally

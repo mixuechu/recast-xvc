@@ -7,13 +7,13 @@ export function SourceEvidence({ model }: { model: Pick<Workbench, 'evidence' | 
   const [query, setQuery] = useState('');
   useEffect(() => setQuery(''), [evidence.selected, evidence.open]);
   useEffect(() => {
-    if (evidence.open && evidence.tab === 'source' && evidence.selected && evidence.source)
+    if (evidence.open && evidence.selected && evidence.source)
       requestAnimationFrame(() =>
         document
           .getElementById(`evidence-${evidence.selected}`)
           ?.scrollIntoView({ block: 'center' }),
       );
-  }, [evidence.open, evidence.tab, evidence.selected, evidence.source]);
+  }, [evidence.open, evidence.selected, evidence.source]);
   const captions =
     evidence.source?.captions.filter(
       (c) => !query || c.text.toLowerCase().includes(query.toLowerCase()),
@@ -48,6 +48,7 @@ export function SourceEvidence({ model }: { model: Pick<Workbench, 'evidence' | 
                       ? 'YouTube 人工字幕'
                       : 'YouTube 字幕 · 类型未知'}
         </span>
+        {evidence.source?.language && <span>字幕语言：{evidence.source.language}</span>}
         {evidence.source?.notice && <p>{evidence.source.notice}</p>}
         {evidence.source?.license && <small>{evidence.source.license}</small>}
       </div>

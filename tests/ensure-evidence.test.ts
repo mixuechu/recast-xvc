@@ -17,7 +17,7 @@ it('does not spend another request when references already exist', async () => {
 });
 it('adds a bounded structured reference without rewriting the paragraph', async () => {
   vi.mocked(generate).mockImplementation(async function* () {
-    yield JSON.stringify({ citationIds: ['c0001'] });
+    yield JSON.stringify({ paragraphs: [{ id: 'p1', citationIds: ['c0001'] }] });
   });
   const original = '# Title\n\nA sufficiently long supported paragraph.';
   expect(await ensureEvidence(env, source, original, new AbortController().signal)).toBe(
@@ -26,7 +26,7 @@ it('adds a bounded structured reference without rewriting the paragraph', async 
 });
 it('refuses fabricated and unsupported repair references', async () => {
   vi.mocked(generate).mockImplementation(async function* () {
-    yield JSON.stringify({ citationIds: ['c9999'] });
+    yield JSON.stringify({ paragraphs: [{ id: 'p1', citationIds: ['c9999'] }] });
   });
   await expect(
     ensureEvidence(
@@ -47,4 +47,51 @@ it('normalizes model cue anchors without another AI request and rejects invented
   await expect(
     ensureEvidence(env, source, original.replace('c0001', 'c9999'), new AbortController().signal),
   ).rejects.toThrow('不存在');
+});
+
+it('repairs multiple dialogue turns in one request without changing the wording', async () => {
+  vi.mocked(generate).mockImplementation(async function* () {
+    yield JSON.stringify({
+      paragraphs: [
+        { id: 'p1', citationIds: ['c0001'] },
+        { id: 'p2', citationIds: ['c0001'] },
+      ],
+    });
+  });
+  const first = '**提问者：** A sufficiently long real question.';
+  const second = '**受访者：** A sufficiently long real answer.';
+  expect(
+    await ensureEvidence(
+      env,
+      source,
+      '# T\n\n' + first + '\n\n' + second,
+      new AbortController().signal,
+    ),
+  ).toBe('# T\n\n' + first + ' [原文](#source-c0001)\n\n' + second + ' [原文](#source-c0001)');
+  expect(generate).toHaveBeenCalledTimes(1);
+});
+it.each(
+  [
+    [
+      { id: 'p1', citationIds: ['c0001'] },
+      { id: 'p1', citationIds: ['c0001'] },
+    ],
+    [{ id: 'p1', citationIds: ['c0001'] }],
+    [
+      { id: 'p1', citationIds: ['c0001'] },
+      { id: 'p2', citationIds: [] },
+    ],
+  ].map((paragraphs) => [paragraphs]),
+)('rejects duplicate, missing or unsupported paragraph repairs: %j', async (paragraphs) => {
+  vi.mocked(generate).mockImplementation(async function* () {
+    yield JSON.stringify({ paragraphs });
+  });
+  await expect(
+    ensureEvidence(
+      env,
+      source,
+      '# T\n\nA sufficiently long real question.\n\nA sufficiently long real answer.',
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
 });

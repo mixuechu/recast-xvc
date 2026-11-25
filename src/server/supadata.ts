@@ -1,5 +1,5 @@
 import type { Source } from '../shared';
-import { normalizeCaptions } from '../domain/captions';
+import { normalizeCaptions, CaptionLimitError } from '../domain/captions';
 
 export class TranscriptServiceError extends Error {
   constructor(
@@ -54,6 +54,7 @@ export async function supadataSource(
     url: `https://www.youtube.com/watch?v=${id}`,
     mode: 'native',
     text: 'false',
+    lang: 'en',
   }).toString();
   let result = await request(url.href);
   if (result.status === 202) {
@@ -78,7 +79,7 @@ export async function supadataSource(
   const { content, lang } = result.data;
   if (!Array.isArray(content) || !content.length)
     return fail('empty', '此视频没有可读取的现有字幕。');
-  if (content.length > 6000) throw new Error('字幕最多支持 100,000 字，请分段整理。');
+  if (content.length > 6000) throw new CaptionLimitError();
   const captions = normalizeCaptions(
     content.map((cue) => {
       if (

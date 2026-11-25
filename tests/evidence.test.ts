@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeCaptions, parseCaptions, clock, captionText } from '../src/domain/captions';
 import { citationIds, validCitations, validateCitedSummary } from '../src/domain/evidence';
-import { compareCaptions, applyDecisions, reviewedCaptions } from '../src/domain/comparison';
-import { publicAudioUrl } from '../src/server/recognition';
 import { dimensions } from '../src/shared';
 const source = normalizeCaptions([
   { text: 'Revenue is 15 percent.', offset: 0, duration: 2 },
@@ -27,7 +25,7 @@ describe('timestamped sources', () => {
   it('rejects empty and oversized sources', () => {
     expect(() => normalizeCaptions([])).toThrow();
     expect(() =>
-      normalizeCaptions([{ text: 'x'.repeat(100001), offset: 0, duration: 1 }]),
+      normalizeCaptions([{ text: 'x'.repeat(150001), offset: 0, duration: 1 }]),
     ).toThrow();
   });
   it('preserves plain text without invented timestamps', () =>
@@ -70,76 +68,6 @@ describe('evidence contracts', () => {
     expect(() => validateCitedSummary(data, source)).toThrow();
   });
 });
-describe('human-reviewed alignment', () => {
-  it('flags numbers and keeps unchanged captions confirmed', () => {
-    const rows = compareCaptions(source, parseCaptions(srt));
-    expect(rows[0]).toMatchObject({ changed: true, confirmed: false });
-    expect(rows[0].reasons).toContain('数字有差异');
-    expect(rows[1].confirmed).toBe(true);
-  });
-  it('requires confirmation before producing a revised source', () =>
-    expect(() => reviewedCaptions(compareCaptions(source, parseCaptions(srt)))).toThrow('确认'));
-  it('applies decisions without mutating the source or duplicating content', () => {
-    const rows = compareCaptions(source, parseCaptions(srt));
-    const resolved = applyDecisions(rows, [{ id: rows[0].id, decision: 'candidate' }]);
-    expect(rows[0].confirmed).toBe(false);
-    expect(reviewedCaptions(resolved)[0].text).toContain('50');
-  });
-  it('aligns one long ASR utterance to several subtitle cues exactly once', () => {
-    const rows = compareCaptions(source, [
-      { text: 'One longer sentence.', offset: 0, duration: 4 },
-    ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].original).toBe('Revenue is 15 percent. Do not ship it yet.');
-    expect(rows[0].candidate).toBe('One longer sentence.');
-  });
-  it('preserves unmatched candidate segments for explicit review', () => {
-    const rows = compareCaptions(source, [...source, { text: 'Extra.', offset: 8, duration: 2 }]);
-    expect(rows.at(-1)).toMatchObject({ original: '', candidate: 'Extra.', confirmed: false });
-  });
-  it('rejects untimed candidates and duplicate decisions', () => {
-    expect(() => compareCaptions(source, [{ text: 'text', offset: 0, duration: 0 }])).toThrow(
-      '时间轴',
-    );
-    const rows = compareCaptions(source, parseCaptions(srt));
-    expect(() =>
-      applyDecisions(rows, [
-        { id: rows[0].id, decision: 'original' },
-        { id: rows[0].id, decision: 'candidate' },
-      ]),
-    ).toThrow();
-  });
-  it('requires nonempty edits', () =>
-    expect(() =>
-      applyDecisions(compareCaptions(source, parseCaptions(srt)), [
-        { id: 'row-1', decision: 'edited', text: '' },
-      ]),
-    ).toThrow());
-});
-describe('recognition URL validation', () => {
-  it.each([
-    'http://example.com/audio.mp3',
-    'https://127.0.0.1/a.wav',
-    'https://localhost/a.wav',
-    'https://internal.local/a.wav',
-    'https://name:password@example.com/a.wav',
-    'https://example.com/page',
-  ])('rejects %s', (url) => expect(() => publicAudioUrl(url)).toThrow());
-  it('accepts a public HTTPS file with a signed query', () =>
-    expect(publicAudioUrl('https://media.example.com/audio.mp3?token=short-lived')).toBe(
-      'https://media.example.com/audio.mp3?token=short-lived',
-    ));
-});
-
-it('flags changed units even when the number is identical', () => {
-  const rows = compareCaptions(
-    [{ text: 'The latency is 15 seconds.', offset: 0, duration: 2 }],
-    [{ text: 'The latency is 15 milliseconds.', offset: 0, duration: 2 }],
-  );
-  expect(rows[0].reasons).toContain('单位或量级有差异');
-  expect(rows[0].reasons).not.toContain('数字有差异');
-});
-
 it('restores imported subtitle timing and plain text for another generation', () => {
   const cues = [
     { text: 'First.', offset: 0.125, duration: 2.375 },
@@ -155,4 +83,9 @@ it('restores imported subtitle timing and plain text for another generation', ()
   expect(captionText([{ text: 'Untimed source.', offset: 0, duration: 0 }])).toBe(
     'Untimed source.',
   );
+});
+
+it('accepts a long English interview without dropping transcript text', () => {
+  const text = 'English interview. '.repeat(5500);
+  expect(normalizeCaptions([{ text, offset: 0, duration: 7200 }])[0].text).toBe(text.trim());
 });

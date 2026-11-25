@@ -87,7 +87,6 @@ export function ArticleReader({ model }: { model: Workbench }) {
           <button onClick={() => evidence.show()}>
             查看原文依据<span>{article.citationCount ?? 0} 条原文</span>
           </button>
-          <button onClick={() => evidence.show(undefined, 'review')}>校对字幕</button>
         </div>
       )}
       {!article && !busy ? (
@@ -190,9 +189,6 @@ export function ArticleReader({ model }: { model: Workbench }) {
                 <p className="source-disclosure">此素材为原创示例对话，不是指定参考视频的字幕。</p>
               )}
               {article?.source.notice && <p className="source-notice">{article.source.notice}</p>}
-              {article?.parentId && (
-                <p className="source-disclosure">由已确认的校对版本生成，原文章仍在最近整理中。</p>
-              )}
               {article?.requirements && (
                 <details className="applied-requirements">
                   <summary>

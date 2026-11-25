@@ -10,6 +10,7 @@ export type Source = {
   videoId?: string;
   kind: 'youtube' | 'sample' | 'manual';
   captions: Caption[];
+  // Legacy publisher/reviewed tags keep existing 24-hour records readable.
   provider?: 'youtube' | 'publisher' | 'manual' | 'sample' | 'reviewed';
   sourceUrl?: string;
   notice?: string;
@@ -31,8 +32,6 @@ export type Article = {
   createdAt: number;
   status: 'generating' | 'complete' | 'interrupted';
   expiresAt: number;
-  sourceRevision?: number;
-  parentId?: string;
   citationCount?: number;
 };
 export function videoId(input: string): string {
@@ -76,34 +75,6 @@ export type CitedField = {
   status: 'supported' | 'not-mentioned';
 };
 export type CitedSummary = Record<(typeof dimensions)[number], CitedField>;
-export type ReviewDecision = 'original' | 'candidate' | 'edited';
-export type ComparisonRow = {
-  id: string;
-  captionId: string;
-  offset: number;
-  duration: number;
-  original: string;
-  candidate: string;
-  changed: boolean;
-  reasons: string[];
-  decision: ReviewDecision;
-  confirmed: boolean;
-  edited?: string;
-};
-export type Review = {
-  version: number;
-  provider: 'import' | 'volcengine';
-  createdAt: number;
-  rows: ComparisonRow[];
-};
-export type Recognition = {
-  taskId: string;
-  status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
-  createdAt: number;
-  error?: string;
-  nextPollAt: number;
-  attempts: number;
-};
 export type SourceMeta = Omit<Source, 'captions'>;
 export type GenerationEvent =
   | { type: 'session'; id: string }
@@ -119,11 +90,3 @@ export type GenerationEvent =
     }
   | { type: 'error'; message: string }
   | { type: 'heartbeat' };
-
-export type AudioUpload = {
-  url: string;
-  filename: string;
-  format: string;
-  size: number;
-  expiresAt: number;
-};

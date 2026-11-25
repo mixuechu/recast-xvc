@@ -1,5 +1,11 @@
 import type { Caption } from '../shared';
-const maxText = 100_000;
+const maxText = 150_000;
+export class CaptionLimitError extends Error {
+  constructor() {
+    super('视频字幕最多支持 150,000 字符和 6,000 个片段，请分段整理。');
+    this.name = 'CaptionLimitError';
+  }
+}
 export function captionId(index: number) {
   return `c${String(index + 1).padStart(4, '0')}`;
 }
@@ -23,7 +29,7 @@ export function normalizeCaptions(input: Caption[]): Caption[] {
     }));
   if (!result.length) throw new Error('字幕为空，请重新导入。');
   if (result.length > 6000 || result.reduce((sum, c) => sum + c.text.length, 0) > maxText)
-    throw new Error('字幕最多支持 100,000 字，请分段整理。');
+    throw new CaptionLimitError();
   if (
     result.some(
       (c) =>

@@ -1,5 +1,3 @@
-import { mediaGateway } from './media-gateway';
-import { publicOrigin } from './session/audio';
 import type { Env } from './env';
 import { body, json, message } from './http';
 export { ArticleSession } from './session/ArticleSession';
@@ -17,35 +15,16 @@ export default {
           model: env.AI_MODEL,
           transcriptProvider: env.SUPADATA_API_KEY ? 'supadata' : 'direct',
           accessRequired: !!env.APP_ACCESS_TOKEN,
-          audioUploadConfigured: (() => {
-            try {
-              if (!mediaGateway(env)) publicOrigin(env.PUBLIC_BASE_URL ?? url.origin);
-              return true;
-            } catch {
-              return false;
-            }
-          })(),
-          recognitionConfigured: !!env.VOLC_ASR_API_KEY,
           configured: !!(env.AI_PROVIDER === 'gemini' ? env.GEMINI_API_KEY : env.ZHIPU_API_KEY),
         });
-      else if (/^\/api\/audio\/[a-f0-9]{64}\/[a-f0-9]{32}$/.test(url.pathname)) {
-        if (!['GET', 'HEAD'].includes(request.method))
-          return json({ error: '请求方法不支持。' }, 405);
-        const [, , , id, token] = url.pathname.split('/');
-        response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
-          new Request(`https://internal/audio-file?token=${token}`, {
-            method: request.method,
-            headers: request.headers,
-          }),
-        );
-      } else {
+      else {
         if (request.headers.get('origin') && request.headers.get('origin') !== url.origin)
           return json({ error: '请从本站发起请求。' }, 403);
         if (env.APP_ACCESS_TOKEN && request.headers.get('X-Access-Code') !== env.APP_ACCESS_TOKEN)
           return json({ error: '请输入正确的访问码。' }, 401);
         if (url.pathname === '/api/generate' && request.method === 'POST') {
           const input = await body(request);
-          if (!['youtube', 'sample', 'manual', 'revision'].includes(String(input.mode)))
+          if (!['youtube', 'sample', 'manual'].includes(String(input.mode)))
             return json({ error: '请选择字幕来源。' }, 400);
           if (typeof input.requirements !== 'string' || input.requirements.length > 2000)
             return json({ error: '生成要求最多 2,000 字。' }, 400);
@@ -67,26 +46,6 @@ export default {
             transcript: input.transcript,
             requirements: input.requirements,
           };
-          if (input.mode === 'revision') {
-            if (
-              typeof input.fromSessionId !== 'string' ||
-              !/^([a-f0-9]{64})$/.test(input.fromSessionId) ||
-              !Number.isInteger(input.reviewVersion)
-            )
-              return json({ error: '校对版本无效。' }, 400);
-            const exported = await env.SESSIONS.get(
-              env.SESSIONS.idFromName(input.fromSessionId),
-            ).fetch(
-              new Request('https://internal/revision-export', {
-                method: 'POST',
-                body: JSON.stringify({ version: input.reviewVersion }),
-              }),
-            );
-            if (!exported.ok) return exported;
-            safeInput.resolvedSource = await exported.json();
-            safeInput.parentId = input.fromSessionId;
-            safeInput.reviewVersion = input.reviewVersion;
-          }
           response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
             new Request(`https://internal/generate?id=${id}`, {
               method: 'POST',
@@ -94,49 +53,18 @@ export default {
             }),
           );
         } else {
-          const match =
-            /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source|review|recognition|audio))?$/.exec(
-              url.pathname,
-            );
+          const match = /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source))?$/.exec(
+            url.pathname,
+          );
           if (!match) return json({ error: '接口不存在。' }, 404);
           const [, id, action] = match;
-          if (
-            (action &&
-              !(
-                action === 'source'
-                  ? ['GET']
-                  : action === 'review'
-                    ? ['GET', 'POST']
-                    : action === 'audio'
-                      ? ['GET', 'POST']
-                      : action === 'recognition'
-                        ? ['GET', 'POST', 'DELETE']
-                        : ['POST']
-              ).includes(request.method)) ||
-            (!action && !['GET', 'DELETE'].includes(request.method))
-          )
-            return json({ error: '请求方法不支持。' }, 405);
-          const payload =
-            action && !['cancel', 'source', 'audio'].includes(action) && request.method === 'POST'
-              ? await body(request)
-              : undefined;
-          const upload = action === 'audio' && request.method === 'POST';
+          const allowed = action === 'source' ? ['GET'] : action ? ['POST'] : ['GET', 'DELETE'];
+          if (!allowed.includes(request.method)) return json({ error: '请求方法不支持。' }, 405);
+          const payload = action === 'summary' ? await body(request) : undefined;
           response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
             new Request(`https://internal/${action ?? 'article'}`, {
               method: request.method,
-              ...(upload
-                ? {
-                    body: request.body,
-                    headers: {
-                      'X-Audio-Filename': request.headers.get('X-Audio-Filename') ?? '',
-                      'X-Public-Origin': mediaGateway(env)
-                        ? env.MEDIA_GATEWAY_URL!
-                        : publicOrigin(env.PUBLIC_BASE_URL ?? url.origin),
-                    },
-                  }
-                : payload
-                  ? { body: JSON.stringify(payload) }
-                  : {}),
+              ...(payload ? { body: JSON.stringify(payload) } : {}),
             }),
           );
         }
@@ -149,7 +77,7 @@ export default {
     headers.set('Referrer-Policy', 'no-referrer');
     headers.set(
       'Content-Security-Policy',
-      "default-src 'self'; media-src https: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     );
     return new Response(response.body, { status: response.status, headers });
   },

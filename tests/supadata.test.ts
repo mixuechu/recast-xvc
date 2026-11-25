@@ -19,6 +19,7 @@ it('fetches native timestamped captions, converts milliseconds and records prove
   const url = new URL(request.mock.calls[0][0]);
   expect(url.searchParams.get('mode')).toBe('native');
   expect(url.searchParams.get('text')).toBe('false');
+  expect(url.searchParams.get('lang')).toBe('en');
   expect(url.searchParams.get('url')).toBe('https://www.youtube.com/watch?v=aircAruvnKk');
   expect(source).toMatchObject({
     title: 'Neural networks',

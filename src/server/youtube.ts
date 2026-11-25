@@ -1,17 +1,13 @@
 import { fetchTranscript, type FetchParams } from 'youtube-transcript-plus';
 import type { Source } from '../shared';
-import { normalizeCaptions } from '../domain/captions';
+import { normalizeCaptions, CaptionLimitError } from '../domain/captions';
 import { youtubeFetch, YoutubeSourceError } from './youtube-fetch';
 // Observe the selected track in the existing player request; no second network lookup.
 export async function youtubeSource(id: string, signal: AbortSignal): Promise<Source> {
   try {
     return await readYoutube(id, signal);
   } catch (error) {
-    if (
-      signal.aborted ||
-      error instanceof YoutubeSourceError ||
-      (error instanceof Error && error.message.includes('100,000'))
-    )
+    if (signal.aborted || error instanceof YoutubeSourceError || error instanceof CaptionLimitError)
       throw error;
     throw new YoutubeSourceError(
       error instanceof Error && error.name === 'TimeoutError' ? 'network' : 'unavailable',

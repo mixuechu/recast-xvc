@@ -28,9 +28,9 @@ export async function getSource(
   }
   const id = videoId(input.url ?? '');
   if (env?.TRANSCRIPTS) {
-    const provider = env.SUPADATA_API_KEY ? 'supadata' : 'direct';
+    const provider = env.SUPADATA_API_KEY ? 'supadata:en' : 'direct';
     const response = await env.TRANSCRIPTS.get(
-      env.TRANSCRIPTS.idFromName(`v1:${provider}:${id}`),
+      env.TRANSCRIPTS.idFromName(`v2:${provider}:${id}`),
     ).fetch(new Request(`https://internal/transcript?id=${id}`, { signal }));
     signal.throwIfAborted();
     const data = (await response.json()) as Source & { error?: string };
