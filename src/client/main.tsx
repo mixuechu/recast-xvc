@@ -12,12 +12,12 @@ function App() {
     <div className="app">
       {' '}
       <header className="topbar">
-        <a className="brand" href="/" aria-label="述读首页">
+        <a className="brand" href="/" aria-label="Recast 首页">
           <span className="brand-icon">
             <BookOpen size={21} />
           </span>
           <span>
-            述读<span className="brand-en">SHUDU</span>
+            Recast<span className="brand-en">VIDEO TO ARTICLE</span>
           </span>
         </a>
         <div className="top-right">

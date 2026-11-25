@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "shudu-xvc",
+  "name": "recast-xvc",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-11-25",
   "compatibility_flags": ["nodejs_compat"],

@@ -13,10 +13,14 @@ export function useWorkbench() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [config, setConfig] = useState<Config | null>(null);
-  const [access, setAccess] = useState(() => sessionStorage.getItem('shudu-access') ?? '');
+  const [access, setAccess] = useState(
+    () => sessionStorage.getItem('recast-access') ?? sessionStorage.getItem('shudu-access') ?? '',
+  );
   const [history, setHistory] = useState<Saved[]>(() => {
     try {
-      const data = JSON.parse(localStorage.getItem('shudu-history') ?? '[]');
+      const data = JSON.parse(
+        localStorage.getItem('recast-history') ?? localStorage.getItem('shudu-history') ?? '[]',
+      );
       return Array.isArray(data)
         ? data.filter((x: Saved) => Date.now() - x.createdAt < 86400000).slice(0, 8)
         : [];
@@ -63,7 +67,7 @@ export function useWorkbench() {
       .catch(() => setError('无法连接服务，请刷新页面。'));
   }, []);
   useEffect(() => {
-    localStorage.setItem('shudu-history', JSON.stringify(history));
+    localStorage.setItem('recast-history', JSON.stringify(history));
   }, [history]);
   useEffect(() => {
     if (summaryId) {
@@ -276,7 +280,7 @@ export function useWorkbench() {
     const blob = new Blob([article!.markdown], { type: 'text/markdown;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = '述读文章.md';
+    link.download = 'Recast-article.md';
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   };

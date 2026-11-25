@@ -157,7 +157,7 @@ export function SourcePanel({ model }: { model: Workbench }) {
               value={access}
               onChange={(e) => {
                 setAccess(e.target.value);
-                sessionStorage.setItem('shudu-access', e.target.value);
+                sessionStorage.setItem('recast-access', e.target.value);
               }}
               autoComplete="off"
             />
