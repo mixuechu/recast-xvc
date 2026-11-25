@@ -28,11 +28,13 @@ const generate = async (input) => {
 };
 const requirements =
   '面向初学者，按三个主题章节整理为中文短文，约600字，保留单人讲述，每段引用原文。';
-const id = await generate({
-  mode: 'manual',
-  transcript: await readFile('tests/fixtures/mit-lecture-90s.srt', 'utf8'),
-  requirements,
-});
+const id =
+  process.env.TEST_SESSION_ID ??
+  (await generate({
+    mode: 'manual',
+    transcript: await readFile('tests/fixtures/mit-lecture-90s.srt', 'utf8'),
+    requirements,
+  }));
 await writeFile('work/upload-session.json', JSON.stringify({ id }));
 const before = await api(`/api/sessions/${id}`, null, 'GET');
 const bytes = await readFile('tests/fixtures/mit-lecture-90s.mp3');
@@ -53,12 +55,14 @@ assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
 const range = await fetch(audio.url, { headers: { Range: 'bytes=100-199' } });
 assert.equal(range.status, 206);
 assert.deepEqual(Buffer.from(await range.arrayBuffer()), bytes.subarray(100, 200));
-assert.equal((await fetch(audio.url.replace(/.$/, 'x'))).status, 404);
 assert.equal(
-  (await fetch(new URL('/api/config', audio.url))).status,
+  (await fetch(audio.url.slice(0, -1) + (audio.url.endsWith('0') ? '1' : '0'))).status,
   404,
-  'tunnel must not expose the app API',
 );
+const isolatedRelay = new URL(audio.url).origin !== new URL(base).origin;
+assert.equal((await fetch(new URL('/api/config', audio.url))).status, isolatedRelay ? 404 : 200);
+const config = await api('/api/config', null, 'GET');
+if (config.accessRequired) assert.equal((await fetch(`${base}/api/sessions/${id}`)).status, 401);
 console.log('Upload and provider-facing download passed; submitting actual ASR.');
 const started = Date.now();
 await api(`/api/sessions/${id}/recognition`, { audioUrl: audio.url, format: audio.format });
@@ -98,7 +102,8 @@ const report = {
   uploadBytes: bytes.length,
   fullDownloadVerified: true,
   rangeVerified: true,
-  tunnelApiPrivate: true,
+  downloadRouting: isolatedRelay ? 'isolated-relay' : 'same-origin',
+  protectedApiVerified: config.accessRequired,
   asrStatus: task.status,
   recognitionMs,
   alignedGroups: review.rows.length,

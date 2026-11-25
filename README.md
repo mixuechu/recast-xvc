@@ -2,7 +2,7 @@
 
 把视频内容整理成可核对原文的中文文章。支持真实流式生成、章节级5W1H、字幕差异校对与火山辅助识别。
 
-**当前是本地验收版本，尚未部署网站。** 用户完成体验确认后，再按笔试要求部署 Cloudflare Worker。当前主模型为智谱 GLM-4.7；Gemini 适配器保留，但需要向出题方说明模型差异。
+**线上验收地址：[recast-xvc.mixuechu.workers.dev](https://recast-xvc.mixuechu.workers.dev)**，已按用户授权部署至 Cloudflare Worker，访问码由项目维护者提供。当前主模型为智谱 GLM-4.7；Gemini 适配器保留，但需要向出题方说明模型差异。
 
 ## 启动
 
@@ -23,6 +23,8 @@ npm run dev
 - [架构与代码走读](docs/ARCHITECTURE.md)
 - [当前版本验收记录](docs/VALIDATION.md)
 - [第一版历史验证记录](VALIDATION.md)
+
+线上已知限制：上传音轨可以回听，但火山目前无法下载本站 `workers.dev` 音频地址（45000006），上传后的ASR未通过线上验收。可先导入候选字幕，或使用服务商可下载的直接音频链接。
 
 ## 真实示例与来源
 
@@ -61,9 +63,9 @@ node tests/smoke.mjs  # 真实流式、停止、保留部分内容、删除等�
 
 真实验证结果写入被忽略的 `work/`。它们包含临时会话凭据，不应上传。CI执行不含真实密钥的检查与部署dry-run，不发布网站。
 
-## 后续部署
+## 部署与更新
 
-用户验收后执行，而非本轮自动执行：
+已部署的站点使用SQLite Durable Objects与Cloudflare Secrets。更新方式：
 
 ```sh
 npx wrangler login
