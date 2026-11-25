@@ -1,4 +1,5 @@
 import { youtubeSource } from './youtube';
+import { YoutubeSourceError } from './youtube-fetch';
 import { videoId, type Source } from '../shared';
 import { normalizeCaptions, parseCaptions, clock } from '../domain/captions';
 import { sample } from './sample';
@@ -29,7 +30,8 @@ export async function getSource(input: SourceInput, signal: AbortSignal): Promis
     if (signal.aborted) throw e;
     const publisher = await publisherSource(id, signal);
     if (publisher) return publisher;
-    if (e instanceof Error && e.message.includes('100,000')) throw e;
+    if (e instanceof YoutubeSourceError || (e instanceof Error && e.message.includes('100,000')))
+      throw e;
     throw new Error(
       '无法获取 YouTube 字幕，可能未开启字幕或受到访问限制。请从视频的“显示转录稿”复制内容，或导入 SRT / VTT。',
     );

@@ -36,7 +36,7 @@ export async function publisherSource(
     license: 'MIT OpenCourseWare · CC BY-NC-SA 4.0',
     notice:
       retrieval === 'live'
-        ? 'YouTube 字幕受限，已使用同一视频的 MIT 官方字幕。'
+        ? '本次未能获取 YouTube 字幕，已使用同一视频的 MIT 官方字幕。'
         : 'YouTube 及发布方字幕暂不可用，已使用 MIT 官方字幕固定快照（2026-11-25）。',
     retrieval,
     captions,
