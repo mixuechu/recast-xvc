@@ -1,11 +1,12 @@
 import type { AudioUpload, Recognition } from '../../shared';
 import type { StoredArticle } from './types';
+import { mediaGateway, type MediaGatewayEnv } from '../media-gateway';
 import { readBytes } from '../http';
 import { json } from '../http';
 export const maxAudioBytes = 24 * 1024 * 1024;
 const chunkSize = 1024 * 1024;
 const retention = 3600000;
-type StoredAudio = AudioUpload & { token: string; chunks: number };
+type StoredAudio = AudioUpload & { token: string; chunks: number; remoteObject?: string };
 const mime: Record<string, string> = {
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
@@ -66,11 +67,14 @@ export function byteRange(header: string | null, size: number): [number, number]
     : null;
 }
 export class SessionAudio {
-  constructor(private storage: DurableObjectStorage) {}
+  constructor(
+    private storage: DurableObjectStorage,
+    private env: MediaGatewayEnv = {},
+  ) {}
   async info(): Promise<AudioUpload | null> {
     const media = await this.storage.get<StoredAudio>('audio');
     if (!media || media.expiresAt <= Date.now()) return null;
-    const { token: _token, chunks: _chunks, ...info } = media;
+    const { token: _token, chunks: _chunks, remoteObject: _remoteObject, ...info } = media;
     return info;
   }
   async upload(request: Request, article: StoredArticle) {
@@ -92,25 +96,53 @@ export class SessionAudio {
       expiresAt: Math.min(Date.now() + retention, article.expiresAt),
       url: `${origin}/api/audio/${article.id}/${token}`,
     };
-    await this.storage.transaction(async (tx) => {
-      const current = await tx.get<StoredArticle>('article');
-      const task = await tx.get<Recognition>('recognition');
-      if (!current || current.expiresAt <= Date.now()) throw new Error('文章已过期，请重新生成。');
-      if (task && ['queued', 'running'].includes(task.status))
-        throw new Error('请先停止等待当前识别，再替换音频。');
-      const old = await tx.get<StoredAudio>('audio');
-      if (old) await tx.delete(Array.from({ length: old.chunks }, (_, i) => `audio:${i}`));
-      for (let i = 0; i < media.chunks; i++)
-        await tx.put(`audio:${i}`, bytes.slice(i * chunkSize, (i + 1) * chunkSize));
-      await tx.put('audio', media);
-    });
+    const gateway = mediaGateway(this.env);
+    const previous = await this.storage.get<StoredAudio>('audio');
+    const task = await this.storage.get<Recognition>('recognition');
+    if (task && ['queued', 'running'].includes(task.status))
+      throw new Error('请先停止等待当前识别，再替换音频。');
+    if (gateway) {
+      media.remoteObject = `${token}.${format}`;
+      media.url = await gateway.put(media.remoteObject, bytes, media.expiresAt);
+      media.chunks = 0;
+    }
+    try {
+      await this.storage.transaction(async (tx) => {
+        const current = await tx.get<StoredArticle>('article');
+        const task = await tx.get<Recognition>('recognition');
+        if (!current || current.expiresAt <= Date.now())
+          throw new Error('文章已过期，请重新生成。');
+        if (task && ['queued', 'running'].includes(task.status))
+          throw new Error('请先停止等待当前识别，再替换音频。');
+        const old = await tx.get<StoredAudio>('audio');
+        if (old?.token !== previous?.token) throw new Error('音轨已更新，请刷新面板后重试。');
+        if (old?.chunks)
+          await tx.delete(Array.from({ length: old.chunks }, (_, i) => `audio:${i}`));
+        for (let i = 0; i < media.chunks; i++)
+          await tx.put(`audio:${i}`, bytes.slice(i * chunkSize, (i + 1) * chunkSize));
+        await tx.put('audio', media);
+      });
+    } catch (error) {
+      if (media.remoteObject) await gateway?.remove(media.remoteObject).catch(() => {});
+      throw error;
+    }
+    if (previous?.remoteObject) await gateway?.remove(previous.remoteObject).catch(() => {});
     return this.info();
+  }
+  async destroy() {
+    const media = await this.storage.get<StoredAudio>('audio');
+    if (media?.remoteObject) {
+      const gateway = mediaGateway(this.env);
+      if (!gateway) throw new Error('音频存储配置缺失，暂时无法清理音轨。');
+      await gateway.remove(media.remoteObject);
+    }
   }
   async expire() {
     await this.storage.transaction(async (tx) => {
       const media = await tx.get<StoredAudio>('audio');
       if (media && media.expiresAt <= Date.now()) {
-        await tx.delete(Array.from({ length: media.chunks }, (_, i) => `audio:${i}`));
+        if (media.chunks)
+          await tx.delete(Array.from({ length: media.chunks }, (_, i) => `audio:${i}`));
         await tx.delete('audio');
       }
     });
@@ -124,6 +156,11 @@ export class SessionAudio {
         new URL(request.url).searchParams.get('token') !== media.token
       )
         return json({ error: '音频不存在或已过期。' }, 404);
+      if (media.remoteObject)
+        return new Response(null, {
+          status: 302,
+          headers: { Location: media.url, 'Cache-Control': 'no-store' },
+        });
       const range = byteRange(request.headers.get('Range'), media.size);
       if (!range)
         return new Response(null, {

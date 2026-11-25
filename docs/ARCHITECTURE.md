@@ -38,6 +38,8 @@ flowchart LR
 | `server/catalog.ts`                 | 经过核对的视频与发布方字幕映射、显式快照降级      |
 | `server/ai.ts`                      | 模型协议适配与提示词，不承载会话状态              |
 | `server/session/ArticleSession.ts`  | 会话持久化、生成生命周期、过期与调度              |
+| `server/media-gateway.ts`           | 独立音频存储的鉴权HTTP适配与返回地址验证          |
+| `services/media-gateway/server.mjs` | 有容量上限的临时文件、签名下载、Range与过期回收   |
 | `server/session/audio.ts`           | 有大小与时效限制的音轨、令牌下载、Range回听与清理 |
 | `server/youtube.ts`                 | YouTube协议边界、读取实际选择的字幕轨道类型       |
 | `server/session/ensure-evidence.ts` | 文章引用核对，只补引用，不重写正文                |
@@ -69,9 +71,11 @@ flowchart LR
 
 ### 上传与回听
 
+线上配置独立`media-gateway`：Cloudflare验证上传后把文件发送到mxc-new，服务返回1小时有效的HMAC下载链接，浏览器与火山直接下载。Durable Object只存音频元数据；服务密钥始终在服务端。无网关配置时保留本地会话存储模式。服务器独立目录、systemd服务与TLS证书，不为上传开启公共写入。详见`deploy/media-gateway/README.md`。
+
 每篇文章最多一份24 MB音轨，1小时后失效；删除文章同时删除音轨。下载使用独立随机令牌，仅允许GET/HEAD，并支持单段Range以便回听。写入时验证文件签名、大小、文章存活和识别状态；识别处理中不允许替换音轨。与文章分开存储分块音频，事务更换与过期清理，不把音频塞进文章JSON或模型上下文。
 
-这是有明确上限的作业实现，复用SQLite Durable Object避免为小规模验收引入额外存储服务；较大文件、转码和正式媒体服务应迁移到对象存储。SQLite DO的单值大小限制与存储语义见[官方限制](https://developers.cloudflare.com/durable-objects/platform/limits/)及[存储接口](https://developers.cloudflare.com/durable-objects/api/legacy-kv-storage-api/)。本地 `dev:asr` 通过只允许音频路径的中继连接[Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)，不把本地开发管理界面暴露出去。
+无媒体网关配置的本地模式复用SQLite Durable Object；线上临时音轨独立存放于mxc-new。较大文件、转码和长期保留应迁移到专门的媒体处理与存储服务。SQLite DO的单值大小限制与存储语义见[官方限制](https://developers.cloudflare.com/durable-objects/platform/limits/)及[存储接口](https://developers.cloudflare.com/durable-objects/api/legacy-kv-storage-api/)。本地 `dev:asr` 通过只允许音频路径的中继连接[Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)，不把本地开发管理界面暴露出去。
 
 ### 控制复杂度
 

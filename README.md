@@ -24,7 +24,7 @@ npm run dev
 - [当前版本验收记录](docs/VALIDATION.md)
 - [第一版历史验证记录](VALIDATION.md)
 
-线上已知限制：上传音轨可以回听，但火山目前无法下载本站 `workers.dev` 音频地址（45000006），上传后的ASR未通过线上验收。可先导入候选字幕，或使用服务商可下载的直接音频链接。
+线上音轨存储已接入 mxc-new 的独立 HTTPS 音频服务，修复火山无法下载 `workers.dev` 音频的问题。上传、真实ASR、字幕校对、生成新版与删除清理已通过线上实测。部署细节见 [音频服务说明](deploy/media-gateway/README.md)。
 
 ## 真实示例与来源
 
@@ -71,7 +71,9 @@ node tests/smoke.mjs  # 真实流式、停止、保留部分内容、删除等�
 npx wrangler login
 npx wrangler secret put ZHIPU_API_KEY
 npx wrangler secret put VOLC_ASR_API_KEY
-npx wrangler secret put APP_ACCESS_TOKEN  # 建议公开评审配置共享访问码
+npx wrangler secret put APP_ACCESS_TOKEN  # 公开评审的共享访问码
+npx wrangler secret put MEDIA_GATEWAY_URL
+npx wrangler secret put MEDIA_GATEWAY_SECRET
 npm run deploy
 ```
 

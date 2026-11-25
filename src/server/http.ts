@@ -13,7 +13,7 @@ export async function readBytes(
   request: Request,
   limit: number,
   error: string,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   if (!request.body) throw new Error('请求内容为空。');
   const reader = request.body.getReader();
   let bytes = 0;

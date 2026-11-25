@@ -1,0 +1,27 @@
+[Unit]
+Description=Recast temporary audio gateway
+After=network.target
+
+[Service]
+Type=simple
+User=recast-media
+Group=recast-media
+EnvironmentFile=/etc/recast-media.env
+WorkingDirectory=/opt/recast-media
+ExecStart=/usr/bin/node --max-old-space-size=48 /opt/recast-media/server.mjs
+Restart=on-failure
+RestartSec=3
+StateDirectory=recast-media
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+MemoryMax=96M
+CPUQuota=25%
+TasksMax=32
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,3 +1,4 @@
+import { mediaGateway } from './media-gateway';
 import { publicOrigin } from './session/audio';
 import type { Env } from './env';
 import { body, json, message } from './http';
@@ -16,7 +17,7 @@ export default {
           accessRequired: !!env.APP_ACCESS_TOKEN,
           audioUploadConfigured: (() => {
             try {
-              publicOrigin(env.PUBLIC_BASE_URL ?? url.origin);
+              if (!mediaGateway(env)) publicOrigin(env.PUBLIC_BASE_URL ?? url.origin);
               return true;
             } catch {
               return false;
@@ -126,7 +127,9 @@ export default {
                     body: request.body,
                     headers: {
                       'X-Audio-Filename': request.headers.get('X-Audio-Filename') ?? '',
-                      'X-Public-Origin': publicOrigin(env.PUBLIC_BASE_URL ?? url.origin),
+                      'X-Public-Origin': mediaGateway(env)
+                        ? env.MEDIA_GATEWAY_URL!
+                        : publicOrigin(env.PUBLIC_BASE_URL ?? url.origin),
                     },
                   }
                 : payload

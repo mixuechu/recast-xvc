@@ -109,3 +109,40 @@ it('supports suffix and open-ended ranges but rejects multiple or empty ranges',
   ])
     expect(byteRange(value, 10)).toBeNull();
 });
+
+it('stores gateway audio metadata without duplicating bytes and deletes the remote object', async () => {
+  const { data, article } = memory();
+  const env = {
+    MEDIA_GATEWAY_URL: 'https://media.example.com',
+    MEDIA_GATEWAY_SECRET: 'test-only-'.repeat(4),
+  };
+  const fetcher = vi
+    .fn()
+    .mockImplementation(async (url, options) =>
+      options.method === 'PUT'
+        ? Response.json({ url: `${url}?expires=123&signature=test` })
+        : new Response(null, { status: 204 }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const store = {
+    get: async (key: string) => structuredClone(data.get(key)),
+    put: async (key: string, value: unknown) => {
+      data.set(key, structuredClone(value));
+    },
+    delete: async (keys: string[]) => {
+      for (const key of keys) data.delete(key);
+    },
+    transaction: async (fn: (tx: unknown) => unknown) => fn(store),
+  };
+  try {
+    const audio = new SessionAudio(store as unknown as DurableObjectStorage, env);
+    const info = await audio.upload(upload(), article);
+    expect(info?.url).toContain('https://media.example.com/v1/audio/');
+    expect([...data.keys()]).toEqual(['article', 'audio']);
+    expect(info).not.toHaveProperty('remoteObject');
+    await audio.destroy();
+    expect(fetcher.mock.calls[1][1].method).toBe('DELETE');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

@@ -18,7 +18,7 @@ export class ArticleSession extends DurableObject<Env> {
   private aborter?: AbortController;
   private deleted = false;
   private pending = new Map<string, Promise<CitedSummary>>();
-  private audio = new SessionAudio(this.ctx.storage);
+  private audio = new SessionAudio(this.ctx.storage, this.env);
   private reviews = new Reviews(this.ctx.storage, this.env);
   async alarm() {
     const article = await this.ctx.storage.get<StoredArticle>('article');
@@ -69,6 +69,7 @@ export class ArticleSession extends DurableObject<Env> {
       await this.ctx.storage.put('article', stored);
     }
     if (url.pathname === '/article' && request.method === 'DELETE') {
+      await this.audio.destroy();
       this.deleted = true;
       this.aborter?.abort();
       await this.ctx.storage.deleteAll();

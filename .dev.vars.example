@@ -9,3 +9,6 @@ ZHIPU_API_KEY=replace_locally
 
 # Optional: external audio callback origin. Local npm run dev:asr sets this automatically.
 # PUBLIC_BASE_URL=https://your-worker.example.com
+# Optional: independent temporary audio storage for ASR downloads
+# MEDIA_GATEWAY_URL=https://recast-media.inventory.mimimiai.com
+# MEDIA_GATEWAY_SECRET=replace_with_server_shared_secret_at_least_32_characters
