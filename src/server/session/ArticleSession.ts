@@ -200,7 +200,11 @@ export class ArticleSession extends DurableObject<Env> {
               emit('status', { message: '正在读取字幕' });
               const source =
                 input.resolvedSource ??
-                (await getSource(input, AbortSignal.any([signal, AbortSignal.timeout(40000)])));
+                (await getSource(
+                  input,
+                  AbortSignal.any([signal, AbortSignal.timeout(40000)]),
+                  this.env,
+                ));
               signal.throwIfAborted();
               record = {
                 id,

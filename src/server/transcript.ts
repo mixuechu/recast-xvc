@@ -1,11 +1,14 @@
 import { youtubeSource } from './youtube';
-import { YoutubeSourceError } from './youtube-fetch';
 import { videoId, type Source } from '../shared';
 import { normalizeCaptions, parseCaptions, clock } from '../domain/captions';
 import { sample } from './sample';
-import { publisherSource } from './catalog';
+import type { Env } from './env';
 export type SourceInput = { mode?: string; url?: string; transcript?: string };
-export async function getSource(input: SourceInput, signal: AbortSignal): Promise<Source> {
+export async function getSource(
+  input: SourceInput,
+  signal: AbortSignal,
+  env?: Pick<Env, 'TRANSCRIPTS' | 'SUPADATA_API_KEY'>,
+): Promise<Source> {
   if (input.mode === 'sample')
     return {
       ...structuredClone(sample),
@@ -24,18 +27,17 @@ export async function getSource(input: SourceInput, signal: AbortSignal): Promis
     };
   }
   const id = videoId(input.url ?? '');
-  try {
-    return await youtubeSource(id, signal);
-  } catch (e) {
-    if (signal.aborted) throw e;
-    const publisher = await publisherSource(id, signal);
-    if (publisher) return publisher;
-    if (e instanceof YoutubeSourceError || (e instanceof Error && e.message.includes('100,000')))
-      throw e;
-    throw new Error(
-      '无法获取 YouTube 字幕，可能未开启字幕或受到访问限制。请从视频的“显示转录稿”复制内容，或导入 SRT / VTT。',
-    );
+  if (env?.TRANSCRIPTS) {
+    const provider = env.SUPADATA_API_KEY ? 'supadata' : 'direct';
+    const response = await env.TRANSCRIPTS.get(
+      env.TRANSCRIPTS.idFromName(`v1:${provider}:${id}`),
+    ).fetch(new Request(`https://internal/transcript?id=${id}`, { signal }));
+    signal.throwIfAborted();
+    const data = (await response.json()) as Source & { error?: string };
+    if (!response.ok) throw new Error(data.error ?? '字幕读取失败，请稍后重试。');
+    return data;
   }
+  return youtubeSource(id, signal);
 }
 export function sourceText(source: Source) {
   return source.captions

@@ -4,6 +4,21 @@ import { normalizeCaptions } from '../domain/captions';
 import { youtubeFetch, YoutubeSourceError } from './youtube-fetch';
 // Observe the selected track in the existing player request; no second network lookup.
 export async function youtubeSource(id: string, signal: AbortSignal): Promise<Source> {
+  try {
+    return await readYoutube(id, signal);
+  } catch (error) {
+    if (
+      signal.aborted ||
+      error instanceof YoutubeSourceError ||
+      (error instanceof Error && error.message.includes('100,000'))
+    )
+      throw error;
+    throw new YoutubeSourceError(
+      error instanceof Error && error.name === 'TimeoutError' ? 'network' : 'unavailable',
+    );
+  }
+}
+async function readYoutube(id: string, signal: AbortSignal): Promise<Source> {
   let trackType: Source['trackType'] = 'unknown';
   const result = await fetchTranscript(id, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),

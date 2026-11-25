@@ -28,12 +28,15 @@ npm run dev
 
 ## 真实示例与来源
 
-首页示例是 MIT OCW 的 [What is Computation?](https://www.youtube.com/watch?v=nykOeWgQcHM)，讲者 Dr. Ana Bell。先尝试 YouTube 字幕；对这一经过核对的视频，受限时可使用[发布方官方字幕](https://ocw.mit.edu/courses/6-0001-introduction-to-computer-science-and-programming-in-python-fall-2016/resources/lecture-1-what-is-computation/)，再失败才使用注明日期的固定快照。页面显示实际来源，不把快照标成实时抓取。
+首页示例是 MIT OCW 的 [What is Computation?](https://www.youtube.com/watch?v=nykOeWgQcHM)，讲者 Dr. Ana Bell。它与其他视频使用相同的字幕获取流程，不再自动替换成发布方字幕或本地快照。
 
-其他视频没有通用降级映射，获取受限时支持手动导入 SRT、VTT 或纯文本。原创合成示例仍有明确标记，不冒充真实视频。MIT字幕与真实音频测试片段采用CC BY-NC-SA 4.0，来源与处理见 [字幕说明](src/server/fixtures/README.md) 和 [音频说明](tests/fixtures/MEDIA-LICENSE.md)。
+推荐配置 `SUPADATA_API_KEY`，使用 [Supadata 的 native 模式](https://docs.supadata.ai/get-transcript)获取视频现有字幕，不触发音频转录。未配置时保留直接读取适配器，但 Cloudflare 出口可能被 YouTube 拒绝。新服务的实际成功率须另行联调，不以协议测试代替真实验收。成功字幕按视频与服务缓存24小时，同视频并发合并；失败不缓存。
+
+获取失败时可以导入 SRT、VTT 或纯文本。原创合成示例仍有明确标记，不冒充真实视频。MIT真实音频测试片段采用CC BY-NC-SA 4.0，来源与处理见 [音频说明](tests/fixtures/MEDIA-LICENSE.md)。
 
 ## 核心实现
 
+- **字幕获取**：`TranscriptCache` 负责24小时缓存与并发合并，`supadata.ts` / `youtube.ts` 隔离读取方式。字幕毫秒统一转换为秒，未知轨道类型不冒充人工字幕；来源与读取方式随文章保存。
 - **流式文章**：以 Fetch 调用智谱 Chat Completions 或 Gemini REST；解析UTF-8分片与SSE，以类型明确的事件发送状态、增量和完成结果。前端流式渲染Markdown，通过DOMPurify清洗HTML。
 - **用户要求**：任务、风格、受众与约束作为独立数据传给模型；提示词要求忠于字幕、区分观点和事实。单人讲座不捏造主持人与问答。篇幅要求由模型遵循，并非硬性字数保证。
 - **原文溯源**：每段字幕有稳定编号。文章和5W1H引用真实编号，点击可查看原文与时间点；服务器验证引用存在性，不宣称已自动证明结论正确。
@@ -69,6 +72,7 @@ node tests/smoke.mjs  # 真实流式、停止、保留部分内容、删除等�
 
 ```sh
 npx wrangler login
+npx wrangler secret put SUPADATA_API_KEY  # 推荐的已有字幕读取服务
 npx wrangler secret put ZHIPU_API_KEY
 npx wrangler secret put VOLC_ASR_API_KEY
 npx wrangler secret put APP_ACCESS_TOKEN  # 公开评审的共享访问码
@@ -77,7 +81,7 @@ npx wrangler secret put MEDIA_GATEWAY_SECRET
 npm run deploy
 ```
 
-`wrangler.jsonc` 包含静态资产、会话和限流对象的SQLite迁移。`VOLC_ASR_RESOURCE_ID` 默认 `volc.seedasr.auc`。模型名称与厂商通过 `AI_MODEL` / `AI_PROVIDER` 配置；切换Gemini需配置 `GEMINI_API_KEY`。Gemini尚未进行真实账号联调，线上持久化与字幕出口可用性也需部署后验证。
+`wrangler.jsonc` 包含静态资产、会话、字幕缓存和限流对象的SQLite迁移。`VOLC_ASR_RESOURCE_ID` 默认 `volc.seedasr.auc`。模型名称与厂商通过 `AI_MODEL` / `AI_PROVIDER` 配置；切换Gemini需配置 `GEMINI_API_KEY`。Gemini尚未进行真实账号联调，线上持久化与字幕出口可用性也需部署后验证。
 
 ## 外部接口参考
 

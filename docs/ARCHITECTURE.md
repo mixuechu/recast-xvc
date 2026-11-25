@@ -35,7 +35,8 @@ flowchart LR
 | `domain/comparison.ts`              | 按区间连接分组、一对多对齐、人工确认规则          |
 | `server/index.ts`                   | 同源检查、访问码、输入边界、路由分发              |
 | `server/transcript.ts`              | 素材入口与 YouTube 获取                           |
-| `server/catalog.ts`                 | 经过核对的视频与发布方字幕映射、显式快照降级      |
+| `server/TranscriptCache.ts`         | 每视频的24小时持久缓存、并发合并与过期清理        |
+| `server/supadata.ts`                | 只读取已有字幕的服务适配、时间单位与错误边界      |
 | `server/ai.ts`                      | 模型协议适配与提示词，不承载会话状态              |
 | `server/session/ArticleSession.ts`  | 会话持久化、生成生命周期、过期与调度              |
 | `server/media-gateway.ts`           | 独立音频存储的鉴权HTTP适配与返回地址验证          |
@@ -60,6 +61,12 @@ flowchart LR
 当初次生成遗漏了段落引用，按缺失段落请求结构化引用核对（最多8段，每段一次）：模型选择支持该段的真实编号，不允许改写正文或随意补编号。无法找到支持内容、编号无效或请求失败时保留文章为中断状态。引用补全不是自动重生成整篇文章。
 
 明确的章节数量由纯函数处理：重组既有章节和段落，保留原小标题，不再调用模型重写全文。篇幅和语言风格仍由模型遵循。
+
+### 字幕获取与缓存
+
+字幕缓存使用独立 SQLite Durable Object，以服务和视频编号分区。首次成功结果保存24小时，命中时保留真实读取时间及来源；同视频并发合并。失败不写入缓存。配置 Supadata 时固定 `mode=native`，不自动触发 ASR；未配置时保留直接获取适配器。API密钥只发送到固定服务端点，读取视频标题的公开 oEmbed 请求不携带密钥。删除文章不影响公开字幕的共享缓存，缓存自身按期删除。
+
+一次取消不撤销其他会话共用的字幕读取，读取本身受超时限制；调用方在继续生成前检查取消。现有会话使用自身保存的来源，缓存刷新不改变旧文章。来源适配成功与服务可用性是两项不同验收，新服务仍需真实密钥完成联调。
 
 ### 稳定的来源版本
 
@@ -91,7 +98,7 @@ flowchart LR
 2. `main.tsx`、`SourcePanel.tsx` 看用户入口。
 3. `useWorkbench.ts` 的 `start` 看请求与增量状态。
 4. `server/index.ts`、`ArticleSession.stream` 看生命周期。
-5. `transcript.ts`、`ai.ts`、`protocol/sse.ts` 看外部依赖边界。
+5. `transcript.ts`、`TranscriptCache.ts`、`supadata.ts` 看字幕获取；`ai.ts`、`protocol/sse.ts` 看模型边界。
 6. `ensure-evidence.ts`、`summarize.ts` 看证据约束。
 7. `comparison.ts`、`reviews.ts`、`recognition.ts` 看校对与异步任务。
 8. `useEvidence.ts` 和对应界面看用户如何核对与修订。

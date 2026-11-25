@@ -3,6 +3,7 @@ import { publicOrigin } from './session/audio';
 import type { Env } from './env';
 import { body, json, message } from './http';
 export { ArticleSession } from './session/ArticleSession';
+export { TranscriptCache } from './TranscriptCache';
 export { Quota } from './Quota';
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -14,6 +15,7 @@ export default {
         response = json({
           provider: env.AI_PROVIDER,
           model: env.AI_MODEL,
+          transcriptProvider: env.SUPADATA_API_KEY ? 'supadata' : 'direct',
           accessRequired: !!env.APP_ACCESS_TOKEN,
           audioUploadConfigured: (() => {
             try {

@@ -12,3 +12,6 @@ ZHIPU_API_KEY=replace_locally
 # Optional: independent temporary audio storage for ASR downloads
 # MEDIA_GATEWAY_URL=https://recast-media.inventory.mimimiai.com
 # MEDIA_GATEWAY_SECRET=replace_with_server_shared_secret_at_least_32_characters
+
+# Recommended: native YouTube captions via Supadata (no ASR fallback)
+# SUPADATA_API_KEY=replace_locally

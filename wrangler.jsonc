@@ -9,8 +9,12 @@
   "durable_objects": {
     "bindings": [
       { "name": "SESSIONS", "class_name": "ArticleSession" },
+      { "name": "TRANSCRIPTS", "class_name": "TranscriptCache" },
       { "name": "QUOTAS", "class_name": "Quota" },
     ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ArticleSession", "Quota"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ArticleSession", "Quota"] },
+    { "tag": "v2", "new_sqlite_classes": ["TranscriptCache"] },
+  ],
 }

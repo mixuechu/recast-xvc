@@ -16,7 +16,9 @@ export type Source = {
   trackType?: 'manual' | 'automatic' | 'unknown';
   language?: string;
   license?: string;
-  retrieval?: 'live' | 'snapshot';
+  retrieval?: 'live' | 'snapshot' | 'cache';
+  retrievedBy?: 'supadata';
+  fetchedAt?: number;
 };
 export type Chapter = { id: string; title: string; markdown: string };
 export const dimensions = ['Who', 'What', 'When', 'Where', 'Why', 'How'] as const;
