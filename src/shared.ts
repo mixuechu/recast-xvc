@@ -1,13 +1,25 @@
-export type Caption = { text: string; offset: number; duration: number };
+export type Caption = {
+  id?: string;
+  text: string;
+  offset: number;
+  duration: number;
+  speaker?: string;
+};
 export type Source = {
   title: string;
   videoId?: string;
   kind: 'youtube' | 'sample' | 'manual';
   captions: Caption[];
+  provider?: 'youtube' | 'publisher' | 'manual' | 'sample' | 'reviewed';
+  sourceUrl?: string;
+  notice?: string;
+  trackType?: 'manual' | 'automatic' | 'unknown';
+  language?: string;
+  license?: string;
+  retrieval?: 'live' | 'snapshot';
 };
 export type Chapter = { id: string; title: string; markdown: string };
 export const dimensions = ['Who', 'What', 'When', 'Where', 'Why', 'How'] as const;
-export type Summary = Record<(typeof dimensions)[number], string>;
 export type Article = {
   id: string;
   source: Omit<Source, 'captions'>;
@@ -17,6 +29,9 @@ export type Article = {
   createdAt: number;
   status: 'generating' | 'complete' | 'interrupted';
   expiresAt: number;
+  sourceRevision?: number;
+  parentId?: string;
+  citationCount?: number;
 };
 export function videoId(input: string): string {
   let u: URL;
@@ -53,15 +68,52 @@ export function splitArticle(markdown: string): Chapter[] {
     });
   return chapters;
 }
-export function validateSummary(data: unknown): Summary {
-  if (!data || typeof data !== 'object') throw new Error('总结格式不正确，请重试。');
-  const record = data as Record<string, unknown>;
-  for (const key of dimensions)
-    if (
-      typeof record[key] !== 'string' ||
-      !record[key].trim() ||
-      (record[key] as string).length > 1600
-    )
-      throw new Error('总结字段不完整，请重试。');
-  return Object.fromEntries(dimensions.map((key) => [key, record[key]])) as Summary;
-}
+export type CitedField = {
+  text: string;
+  citationIds: string[];
+  status: 'supported' | 'not-mentioned';
+};
+export type CitedSummary = Record<(typeof dimensions)[number], CitedField>;
+export type ReviewDecision = 'original' | 'candidate' | 'edited';
+export type ComparisonRow = {
+  id: string;
+  captionId: string;
+  offset: number;
+  duration: number;
+  original: string;
+  candidate: string;
+  changed: boolean;
+  reasons: string[];
+  decision: ReviewDecision;
+  confirmed: boolean;
+  edited?: string;
+};
+export type Review = {
+  version: number;
+  provider: 'import' | 'volcengine';
+  createdAt: number;
+  rows: ComparisonRow[];
+};
+export type Recognition = {
+  taskId: string;
+  status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
+  createdAt: number;
+  error?: string;
+  nextPollAt: number;
+  attempts: number;
+};
+export type SourceMeta = Omit<Source, 'captions'>;
+export type GenerationEvent =
+  | { type: 'session'; id: string }
+  | { type: 'status'; message: string }
+  | ({ type: 'source' } & SourceMeta)
+  | { type: 'delta'; text: string }
+  | {
+      type: 'done';
+      chapters: Chapter[];
+      expiresAt: number;
+      citationCount: number;
+      markdown: string;
+    }
+  | { type: 'error'; message: string }
+  | { type: 'heartbeat' };

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { videoId, splitArticle, validateSummary } from '../src/shared';
-import { readSSE } from '../src/server/sse';
+import { videoId, splitArticle } from '../src/shared';
+import { readSSE } from '../src/protocol/sse';
 import { generate } from '../src/server/ai';
 import { getSource, sourceText } from '../src/server/transcript';
 const stream = (text: string) =>
@@ -32,21 +32,6 @@ describe('input and context boundaries', () => {
       { id: 'chapter-1', title: '相同', markdown: '第一章\n### 小节\n内容' },
       { id: 'chapter-2', title: '相同', markdown: '第二章' },
     ]);
-  });
-  it('rejects non-structured summaries', () => {
-    expect(() => validateSummary({ Who: '嘉宾' })).toThrow();
-    expect(() => validateSummary(null)).toThrow();
-  });
-  it('validates all six fields and drops extraneous data', () => {
-    const obj = {
-      Who: '嘉宾',
-      What: '任务',
-      When: '未明确提及',
-      Where: '未明确提及',
-      Why: '效率',
-      How: '步骤',
-    };
-    expect(validateSummary({ ...obj, injected: 'ignore' })).toEqual(obj);
   });
   it('never silently replaces a failed video with the demo', async () => {
     await expect(

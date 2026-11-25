@@ -3,3 +3,6 @@ ZHIPU_API_KEY=replace_locally
 # APP_ACCESS_TOKEN=choose_a_review_code
 # Gemini: set AI_PROVIDER=gemini and AI_MODEL in wrangler.jsonc
 # GEMINI_API_KEY=replace_locally
+# Volcengine ASR (separate entitlement from TTS)
+# VOLC_ASR_API_KEY=replace_locally
+# VOLC_ASR_RESOURCE_ID=volc.seedasr.auc

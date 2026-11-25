@@ -11,8 +11,6 @@ const labels = {
 };
 export function SummaryDialog({ model }: { model: Workbench }) {
   const {
-    status,
-    error,
     summaryId,
     summary,
     summaryBusy,
@@ -21,6 +19,7 @@ export function SummaryDialog({ model }: { model: Workbench }) {
     chapters,
     openSummary,
     closeSummary,
+    evidence,
   } = model;
   return (
     <dialog
@@ -45,7 +44,7 @@ export function SummaryDialog({ model }: { model: Workbench }) {
         </button>
       </div>
       <h2 id="summary-title">{chapters.find((c) => c.id === summaryId)?.title}</h2>
-      <p className="summary-context">结合完整对话，聚焦当前章节。</p>
+      <p className="summary-context">结合完整内容，聚焦当前章节。</p>
       {summaryBusy ? (
         <div className="summary-loading" role="status">
           <LoaderCircle size={24} className="spin" />
@@ -67,7 +66,22 @@ export function SummaryDialog({ model }: { model: Workbench }) {
                   <span>{key}</span>
                   {labels[key]}
                 </dt>
-                <dd>{summary[key]}</dd>
+                <dd>
+                  {summary[key].text}
+                  <div className="summary-citations">
+                    {summary[key].citationIds.map((id, index) => (
+                      <button
+                        key={id}
+                        onClick={() => {
+                          closeSummary();
+                          evidence.show(id);
+                        }}
+                      >
+                        查看原文{summary[key].citationIds.length > 1 ? ` ${index + 1}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </dd>
               </div>
             ))}
           </dl>

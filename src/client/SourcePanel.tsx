@@ -8,6 +8,8 @@ export function SourcePanel({ model }: { model: Workbench }) {
     setUrl,
     transcript,
     setTranscript,
+    setError,
+    error,
     requirements,
     setRequirements,
     article,
@@ -20,7 +22,6 @@ export function SourcePanel({ model }: { model: Workbench }) {
     setSidebar,
     mobile,
     sidebarRef,
-    dialog,
     restore,
     start,
     cancel,
@@ -99,6 +100,29 @@ export function SourcePanel({ model }: { model: Workbench }) {
               disabled={busy}
             />
             <span className="hint">{transcript.length.toLocaleString()} / 100,000 字</span>
+            <label className="file-button">
+              导入字幕文件
+              <input
+                type="file"
+                accept=".srt,.vtt,.txt,text/plain,text/vtt"
+                disabled={busy}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (!file) return;
+                  if (file.size > 300000) {
+                    setError('字幕文件最多 300 KB。');
+                    return;
+                  }
+                  try {
+                    setTranscript(await file.text());
+                    setError('');
+                  } catch {
+                    setError('无法读取文件，请重新选择。');
+                  }
+                }}
+              />
+            </label>
           </div>
         ) : (
           <div className="selected-sample">
@@ -162,6 +186,11 @@ export function SourcePanel({ model }: { model: Workbench }) {
               autoComplete="off"
             />
           </div>
+        )}
+        {mobile && sidebar && error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
         )}
         {busy ? (
           <button type="button" className="primary stop" onClick={cancel}>

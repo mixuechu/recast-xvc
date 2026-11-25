@@ -5,6 +5,7 @@ import { SourcePanel } from './SourcePanel';
 import { ArticleReader } from './ArticleReader';
 import { SummaryDialog } from './SummaryDialog';
 import './style.css';
+import { EvidenceDialog } from './EvidenceDialog';
 function App() {
   const model = useWorkbench();
   const { sidebar, setSidebar } = model;
@@ -45,6 +46,7 @@ function App() {
         <ArticleReader model={model} />
       </div>
       <SummaryDialog model={model} />
+      <EvidenceDialog model={model} />
     </div>
   );
 }

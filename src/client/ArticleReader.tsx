@@ -15,16 +15,15 @@ import {
 } from 'lucide-react';
 import type { Workbench } from './useWorkbench';
 import { Markdown } from './Markdown';
+import { readableLength } from '../domain/requirements';
 export function ArticleReader({ model }: { model: Workbench }) {
   const {
-    requirements,
     article,
     busy,
     status,
     error,
     setError,
     config,
-    summary,
     copied,
     sidebar,
     setSidebar,
@@ -36,6 +35,8 @@ export function ArticleReader({ model }: { model: Workbench }) {
     copy,
     download,
     remove,
+    evidence,
+    startRealExample,
   } = model;
   return (
     <main inert={mobile && sidebar} className="main" id="main">
@@ -81,6 +82,14 @@ export function ArticleReader({ model }: { model: Workbench }) {
           </button>
         </div>
       )}
+      {article && !busy && (
+        <div className="evidence-entry">
+          <button onClick={() => evidence.show()}>
+            查看原文依据<span>{article.citationCount ?? 0} 条原文</span>
+          </button>
+          <button onClick={() => evidence.show(undefined, 'review')}>校对字幕</button>
+        </div>
+      )}
       {!article && !busy ? (
         <div className="empty-state">
           <div className="editorial-kicker">
@@ -103,7 +112,7 @@ export function ArticleReader({ model }: { model: Workbench }) {
           <button
             className="empty-example"
             disabled={!config?.configured}
-            onClick={() => start(true)}
+            onClick={startRealExample}
           >
             <div className="example-art">
               <div className="wave">
@@ -116,9 +125,9 @@ export function ArticleReader({ model }: { model: Workbench }) {
               </span>
             </div>
             <div className="example-copy">
-              <span className="eyebrow">从一段示例开始</span>
-              <strong>AI 产品的第一公里</strong>
-              <span>从技术能力，到真实需求</span>
+              <span className="eyebrow">试读一段真实课程</span>
+              <strong>MIT · What is Computation?</strong>
+              <span>真实视频 · 英文原文 · 中文整理</span>
             </div>
             <span className="example-action">
               试读
@@ -162,7 +171,7 @@ export function ArticleReader({ model }: { model: Workbench }) {
                 </span>
                 {article?.markdown && (
                   <span className="word-count">
-                    {article.markdown.replace(/[#*\[\]()]/g, '').length.toLocaleString()} 字
+                    {readableLength(article.markdown).toLocaleString()} 字
                   </span>
                 )}
               </div>
@@ -179,6 +188,10 @@ export function ArticleReader({ model }: { model: Workbench }) {
               )}
               {article?.source.kind === 'sample' && (
                 <p className="source-disclosure">此素材为原创示例对话，不是指定参考视频的字幕。</p>
+              )}
+              {article?.source.notice && <p className="source-notice">{article.source.notice}</p>}
+              {article?.parentId && (
+                <p className="source-disclosure">由已确认的校对版本生成，原文章仍在最近整理中。</p>
               )}
               {article?.requirements && (
                 <details className="applied-requirements">
@@ -210,7 +223,7 @@ export function ArticleReader({ model }: { model: Workbench }) {
                 )
               ) : (
                 <article>
-                  <Markdown text={intro} />
+                  <Markdown text={intro} onCitation={(id) => evidence.show(id)} />
                   {chapters.map((chapter) => (
                     <section key={chapter.id} id={chapter.id} className="chapter">
                       <div className="chapter-heading">
@@ -224,7 +237,7 @@ export function ArticleReader({ model }: { model: Workbench }) {
                           5W1H
                         </button>
                       </div>
-                      <Markdown text={chapter.markdown} />
+                      <Markdown text={chapter.markdown} onCitation={(id) => evidence.show(id)} />
                     </section>
                   ))}
                   {busy && <span className="stream-cursor" aria-hidden="true" />}
