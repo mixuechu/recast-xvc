@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shudu-xvc",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-11-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
+  "vars": { "AI_PROVIDER": "zhipu", "AI_MODEL": "glm-4.7" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSIONS", "class_name": "ArticleSession" },
+      { "name": "QUOTAS", "class_name": "Quota" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ArticleSession", "Quota"] }],
+}

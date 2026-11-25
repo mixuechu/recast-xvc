@@ -1,0 +1,5 @@
+ZHIPU_API_KEY=replace_locally
+# Optional: shared review code to protect a public deployment
+# APP_ACCESS_TOKEN=choose_a_review_code
+# Gemini: set AI_PROVIDER=gemini and AI_MODEL in wrangler.jsonc
+# GEMINI_API_KEY=replace_locally
