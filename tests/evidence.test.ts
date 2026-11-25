@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCaptions, parseCaptions, clock } from '../src/domain/captions';
+import { normalizeCaptions, parseCaptions, clock, captionText } from '../src/domain/captions';
 import { citationIds, validCitations, validateCitedSummary } from '../src/domain/evidence';
 import { compareCaptions, applyDecisions, reviewedCaptions } from '../src/domain/comparison';
 import { publicAudioUrl } from '../src/server/recognition';
@@ -129,4 +129,30 @@ describe('recognition URL validation', () => {
     expect(publicAudioUrl('https://media.example.com/audio.mp3?token=short-lived')).toBe(
       'https://media.example.com/audio.mp3?token=short-lived',
     ));
+});
+
+it('flags changed units even when the number is identical', () => {
+  const rows = compareCaptions(
+    [{ text: 'The latency is 15 seconds.', offset: 0, duration: 2 }],
+    [{ text: 'The latency is 15 milliseconds.', offset: 0, duration: 2 }],
+  );
+  expect(rows[0].reasons).toContain('单位或量级有差异');
+  expect(rows[0].reasons).not.toContain('数字有差异');
+});
+
+it('restores imported subtitle timing and plain text for another generation', () => {
+  const cues = [
+    { text: 'First.', offset: 0.125, duration: 2.375 },
+    { text: 'Next.', offset: 4.5, duration: 1.5 },
+  ];
+  expect(
+    parseCaptions(captionText(cues)).map(({ text, offset, duration }) => ({
+      text,
+      offset,
+      duration,
+    })),
+  ).toEqual(cues);
+  expect(captionText([{ text: 'Untimed source.', offset: 0, duration: 0 }])).toBe(
+    'Untimed source.',
+  );
 });

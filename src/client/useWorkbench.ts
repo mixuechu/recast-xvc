@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { splitArticle, videoId, type Article, type GenerationEvent } from '../shared';
+import { splitArticle, videoId, type Article, type GenerationEvent, type Source } from '../shared';
+import { captionText } from '../domain/captions';
 import { readSSE } from '../protocol/sse';
 import { useApi } from './api';
 import { useEvidence } from './hooks/useEvidence';
@@ -12,6 +13,7 @@ type Config = {
   configured: boolean;
   accessRequired: boolean;
   recognitionConfigured: boolean;
+  audioUploadConfigured: boolean;
 };
 export function useWorkbench() {
   const [mode, setMode] = useState<'youtube' | 'sample' | 'manual'>('youtube');
@@ -42,6 +44,7 @@ export function useWorkbench() {
   const panel = useMobilePanel();
   const { sidebar, setSidebar, mobile, sidebarRef } = panel;
   const currentId = useRef('');
+  const restoreEpoch = useRef(0);
   const aborter = useRef<AbortController | null>(null);
   const chapters = article?.chapters.length
     ? article.chapters
@@ -61,11 +64,19 @@ export function useWorkbench() {
   }, [history]);
   const restore = async (id: string) => {
     if (busy) return;
+    const epoch = ++restoreEpoch.current;
     setError('');
     setSidebar(false);
     try {
       const response = await api(`/api/sessions/${id}`);
       const data = (await response.json()) as Article;
+      const source =
+        data.source.kind === 'manual'
+          ? ((await (await api(`/api/sessions/${id}/source`)).json()) as Source)
+          : undefined;
+      if (epoch !== restoreEpoch.current) return;
+      setRequirements(data.requirements);
+      setTranscript(source ? captionText(source.captions) : '');
       setArticle(data);
       setMode(
         data.source.kind === 'youtube'
@@ -78,13 +89,17 @@ export function useWorkbench() {
       currentId.current = id;
       setStatus(data.status === 'complete' ? '已完成' : '上次生成已中断');
     } catch (e) {
-      setError((e as Error).message);
+      if (epoch === restoreEpoch.current) setError((e as Error).message);
     }
   };
   const remember = (data: Article) =>
     setHistory((previous) =>
       [
-        { id: data.id, title: data.source.title, createdAt: data.createdAt },
+        {
+          id: data.id,
+          title: /^#\s+(.+)$/m.exec(data.markdown)?.[1] ?? data.source.title,
+          createdAt: data.createdAt,
+        },
         ...previous.filter((x) => x.id !== data.id),
       ].slice(0, 8),
     );
@@ -94,6 +109,7 @@ export function useWorkbench() {
     videoUrl?: string,
   ) => {
     if (busy) return;
+    restoreEpoch.current++;
     const selected = revision ? 'revision' : videoUrl ? 'youtube' : sample ? 'sample' : mode;
     try {
       if (selected === 'youtube') videoId(videoUrl ?? url);
@@ -164,6 +180,7 @@ export function useWorkbench() {
           next.citationCount = data.citationCount;
           if (typeof data.markdown === 'string') next.markdown = data.markdown;
           complete = true;
+          remember(next);
           setArticle({ ...next });
           setStatus('已完成');
         }

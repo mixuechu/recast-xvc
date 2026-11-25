@@ -1,4 +1,4 @@
-import { fetchTranscript } from 'youtube-transcript-plus';
+import { youtubeSource } from './youtube';
 import { videoId, type Source } from '../shared';
 import { normalizeCaptions, parseCaptions, clock } from '../domain/captions';
 import { sample } from './sample';
@@ -24,17 +24,7 @@ export async function getSource(input: SourceInput, signal: AbortSignal): Promis
   }
   const id = videoId(input.url ?? '');
   try {
-    const result = await fetchTranscript(id, { signal, videoDetails: true });
-    return {
-      kind: 'youtube',
-      videoId: id,
-      title: result.videoDetails.title,
-      provider: 'youtube',
-      sourceUrl: `https://www.youtube.com/watch?v=${id}`,
-      language: result.segments[0]?.lang,
-      trackType: 'unknown',
-      captions: normalizeCaptions(result.segments),
-    };
+    return await youtubeSource(id, signal);
   } catch (e) {
     if (signal.aborted) throw e;
     const publisher = await publisherSource(id, signal);

@@ -7,4 +7,5 @@ export interface Env extends AIEnv, RecognitionEnv {
   SESSIONS: DurableObjectNamespace<ArticleSession>;
   QUOTAS: DurableObjectNamespace<Quota>;
   APP_ACCESS_TOKEN?: string;
+  PUBLIC_BASE_URL?: string;
 }

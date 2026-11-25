@@ -45,6 +45,14 @@ export function compareCaptions(base: Caption[], candidate: Caption[]): Comparis
             )
             ?.join('|') ?? '';
         if (numbers(original) !== numbers(text)) reasons.push('数字有差异');
+        const units = (s: string) =>
+          s
+            .toLowerCase()
+            .match(
+              /%|％|美元|人民币|亿元|万元|元|公里|厘米|毫米|千米|千克|公斤|毫克|分钟|小时|毫秒|摄氏度|华氏度|\b(?:percent|dollars?|cents?|million|billion|thousand|kilometers?|meters?|kilograms?|grams?|minutes?|hours?|seconds?|milliseconds?|kg|km|cm|mm|mg|ms)\b/g,
+            )
+            ?.join('|') ?? '';
+        if (units(original) !== units(text)) reasons.push('单位或量级有差异');
         if (
           /\b(?:not|never|no|cannot|can't|don't|doesn't)\b|不|没有|未|不能/i.test(
             original + ' ' + text,

@@ -1,3 +1,4 @@
+import { publicOrigin } from './session/audio';
 import type { Env } from './env';
 import { body, json, message } from './http';
 export { ArticleSession } from './session/ArticleSession';
@@ -13,10 +14,28 @@ export default {
           provider: env.AI_PROVIDER,
           model: env.AI_MODEL,
           accessRequired: !!env.APP_ACCESS_TOKEN,
+          audioUploadConfigured: (() => {
+            try {
+              publicOrigin(env.PUBLIC_BASE_URL ?? url.origin);
+              return true;
+            } catch {
+              return false;
+            }
+          })(),
           recognitionConfigured: !!env.VOLC_ASR_API_KEY,
           configured: !!(env.AI_PROVIDER === 'gemini' ? env.GEMINI_API_KEY : env.ZHIPU_API_KEY),
         });
-      else {
+      else if (/^\/api\/audio\/[a-f0-9]{64}\/[a-f0-9]{32}$/.test(url.pathname)) {
+        if (!['GET', 'HEAD'].includes(request.method))
+          return json({ error: '请求方法不支持。' }, 405);
+        const [, , , id, token] = url.pathname.split('/');
+        response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
+          new Request(`https://internal/audio-file?token=${token}`, {
+            method: request.method,
+            headers: request.headers,
+          }),
+        );
+      } else {
         if (request.headers.get('origin') && request.headers.get('origin') !== url.origin)
           return json({ error: '请从本站发起请求。' }, 403);
         if (env.APP_ACCESS_TOKEN && request.headers.get('X-Access-Code') !== env.APP_ACCESS_TOKEN)
@@ -73,7 +92,7 @@ export default {
           );
         } else {
           const match =
-            /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source|review|recognition))?$/.exec(
+            /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source|review|recognition|audio))?$/.exec(
               url.pathname,
             );
           if (!match) return json({ error: '接口不存在。' }, 404);
@@ -85,21 +104,34 @@ export default {
                   ? ['GET']
                   : action === 'review'
                     ? ['GET', 'POST']
-                    : action === 'recognition'
-                      ? ['GET', 'POST', 'DELETE']
-                      : ['POST']
+                    : action === 'audio'
+                      ? ['GET', 'POST']
+                      : action === 'recognition'
+                        ? ['GET', 'POST', 'DELETE']
+                        : ['POST']
               ).includes(request.method)) ||
             (!action && !['GET', 'DELETE'].includes(request.method))
           )
             return json({ error: '请求方法不支持。' }, 405);
           const payload =
-            action && !['cancel', 'source'].includes(action) && request.method === 'POST'
+            action && !['cancel', 'source', 'audio'].includes(action) && request.method === 'POST'
               ? await body(request)
               : undefined;
+          const upload = action === 'audio' && request.method === 'POST';
           response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
             new Request(`https://internal/${action ?? 'article'}`, {
               method: request.method,
-              ...(payload ? { body: JSON.stringify(payload) } : {}),
+              ...(upload
+                ? {
+                    body: request.body,
+                    headers: {
+                      'X-Audio-Filename': request.headers.get('X-Audio-Filename') ?? '',
+                      'X-Public-Origin': publicOrigin(env.PUBLIC_BASE_URL ?? url.origin),
+                    },
+                  }
+                : payload
+                  ? { body: JSON.stringify(payload) }
+                  : {}),
             }),
           );
         }

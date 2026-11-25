@@ -63,3 +63,18 @@ export function clock(seconds: number) {
   const h = Math.floor(n / 3600);
   return `${h ? `${h}:` : ''}${String(Math.floor(n / 60) % 60).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 }
+
+// Reconstruct an editable transcript when reopening a saved manual source.
+export function captionText(captions: Caption[]): string {
+  if (!captions.some((c) => c.duration > 0)) return captions.map((c) => c.text).join('\n\n');
+  const timestamp = (seconds: number) => {
+    const ms = Math.round(seconds * 1000);
+    return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
+  };
+  return captions
+    .map(
+      (c, i) =>
+        `${i + 1}\n${timestamp(c.offset)} --> ${timestamp(c.offset + c.duration)}\n${c.speaker ? c.speaker + ': ' : ''}${c.text}`,
+    )
+    .join('\n\n');
+}

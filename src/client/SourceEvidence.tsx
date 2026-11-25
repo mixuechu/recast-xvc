@@ -42,7 +42,11 @@ export function SourceEvidence({ model }: { model: Pick<Workbench, 'evidence' | 
                 ? '原创示例'
                 : evidence.source?.provider === 'manual'
                   ? '手动导入'
-                  : 'YouTube 字幕'}
+                  : evidence.source?.trackType === 'automatic'
+                    ? 'YouTube 自动字幕'
+                    : evidence.source?.trackType === 'manual'
+                      ? 'YouTube 人工字幕'
+                      : 'YouTube 字幕 · 类型未知'}
         </span>
         {evidence.source?.notice && <p>{evidence.source.notice}</p>}
         {evidence.source?.license && <small>{evidence.source.license}</small>}

@@ -37,3 +37,14 @@ it('refuses fabricated and unsupported repair references', async () => {
     ),
   ).rejects.toThrow('有效原文');
 });
+
+it('normalizes model cue anchors without another AI request and rejects invented aliases', async () => {
+  const original = '# T\n\nA sufficiently long supported paragraph. [原文](#c0001)';
+  expect(await ensureEvidence(env, source, original, new AbortController().signal)).toContain(
+    '[原文](#source-c0001)',
+  );
+  expect(generate).not.toHaveBeenCalled();
+  await expect(
+    ensureEvidence(env, source, original.replace('c0001', 'c9999'), new AbortController().signal),
+  ).rejects.toThrow('不存在');
+});

@@ -17,6 +17,8 @@ npm run dev
 
 打开终端的 Local 地址，默认 `http://localhost:8787`。前端修改后需 `npm run build` 并刷新；修改密钥后需重启。密钥仅在服务端，`.dev.vars`、本地存储和测试运行记录均不提交。
 
+本地体验音频上传请使用 `npm run dev:asr`（需要官方 `cloudflared`，本机已有）；它仅临时开放带随机令牌的音频下载，不开放网页和管理API。
+
 - [完整使用说明](docs/USAGE.md)
 - [架构与代码走读](docs/ARCHITECTURE.md)
 - [当前版本验收记录](docs/VALIDATION.md)
@@ -35,7 +37,7 @@ npm run dev
 - **原文溯源**：每段字幕有稳定编号。文章和5W1H引用真实编号，点击可查看原文与时间点；服务器验证引用存在性，不宣称已自动证明结论正确。
 - **章节5W1H**：前端只提交章节ID。服务端读取本次完整字幕、文章和章节；输出六个带文本、引用及“有依据/未提及”状态的字段，验证后固定格式渲染。结果缓存，同章并发合并。
 - **字幕校对**：将不同切句的字幕按重叠时间区间分组，不重复复制ASR长句；提示数字、否定表达与文本差异。人工确认或修订后，使用版本号保存，生成独立新文章。
-- **火山识别**：公网音频URL提交异步任务，状态持久化，通过Durable Object alarm查询；不是依赖浏览器持续开着的假进度。本地文件上传、YouTube音频下载及转码不在当前实现范围。
+- **火山识别**：公网音频URL提交异步任务，状态持久化，通过Durable Object alarm查询；不是依赖浏览器持续开着的假进度。支持上传对应音频（24 MB以内）、1小时临时保存和片段回听；YouTube音频自动下载及转码不在本轮范围。
 - **持久化与边界**：每次生成独立的SQLite Durable Object，保存24小时；包含检查点、取消、过期清理、访问码、请求大小与频率限制。随机会话ID是读取该记录的凭据，不是账号认证。
 
 ## 检查与实测
@@ -53,6 +55,7 @@ npx wrangler deploy --dry-run
 ```sh
 node scripts/live-validation.mjs  # 完整真实视频、总结、缓存、校对与新版本
 TEST_ASR_AUDIO_URL='https://你的可访问存储/mit-lecture-90s.mp3' TEST_BASE_URL=http://localhost:8788 node scripts/live-asr.mjs  # 真实90秒MIT音频，需准备服务商可下载地址
+TEST_BASE_URL=http://localhost:8788 node scripts/live-upload.mjs # 完整上传、真实ASR、修订文章与删除清理
 node tests/smoke.mjs  # 真实流式、停止、保留部分内容、删除等边界
 ```
 

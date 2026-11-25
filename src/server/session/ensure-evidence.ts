@@ -10,6 +10,12 @@ export async function ensureEvidence(
   markdown: string,
   signal: AbortSignal,
 ): Promise<string> {
+  // Models sometimes omit the source- prefix; normalize only known cue anchors.
+  markdown = markdown.replace(/\[([^\]]*)\]\(#(c\d{4,})\)/g, (_link, label: string, id: string) => {
+    if (!source.captions.some((c) => c.id === id))
+      throw new Error('文章引用了不存在的原文片段，已保留正文，请重新生成。');
+    return `[${label}](#source-${id})`;
+  });
   const paragraphs = markdown.split(/\n\s*\n/);
   const missing = paragraphs
     .map((text, i) => ({ id: `p${i}`, text }))

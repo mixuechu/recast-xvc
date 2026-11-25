@@ -12,11 +12,13 @@ import { Reviews } from './reviews';
 import { ensureEvidence } from './ensure-evidence';
 import { applyOutline } from '../../domain/outline';
 import { requestedChapters } from '../../domain/requirements';
+import { SessionAudio } from './audio';
 const ttl = 86400000;
 export class ArticleSession extends DurableObject<Env> {
   private aborter?: AbortController;
   private deleted = false;
   private pending = new Map<string, Promise<CitedSummary>>();
+  private audio = new SessionAudio(this.ctx.storage);
   private reviews = new Reviews(this.ctx.storage, this.env);
   async alarm() {
     const article = await this.ctx.storage.get<StoredArticle>('article');
@@ -26,6 +28,7 @@ export class ArticleSession extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       return;
     }
+    await this.audio.expire();
     await this.reviews.poll(article);
     await this.schedule(article.expiresAt);
   }
@@ -35,7 +38,10 @@ export class ArticleSession extends DurableObject<Env> {
       task && ['queued', 'running'].includes(task.status)
         ? Math.min(task.nextPollAt, expiresAt)
         : expiresAt;
-    await this.ctx.storage.setAlarm(Math.max(Date.now() + 1000, next));
+    const audio = await this.audio.info();
+    await this.ctx.storage.setAlarm(
+      Math.max(Date.now() + 1000, Math.min(next, audio?.expiresAt ?? expiresAt)),
+    );
   }
   async fetch(request: Request): Promise<Response> {
     try {
@@ -75,6 +81,13 @@ export class ArticleSession extends DurableObject<Env> {
         await this.ctx.storage.put('article', stored);
       }
       return json({ ...stored, source: { ...stored.source, captions: undefined } });
+    }
+    if (url.pathname === '/audio-file') return this.audio.file(request);
+    if (url.pathname === '/audio') {
+      if (request.method === 'GET') return json(await this.audio.info());
+      const info = await this.audio.upload(request, stored);
+      await this.schedule(stored.expiresAt);
+      return json(info);
     }
     if (url.pathname === '/source') return json(stored.source);
     if (url.pathname === '/summary' && stored.status !== 'complete')

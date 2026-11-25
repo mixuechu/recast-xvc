@@ -117,3 +117,11 @@ export type GenerationEvent =
     }
   | { type: 'error'; message: string }
   | { type: 'heartbeat' };
+
+export type AudioUpload = {
+  url: string;
+  filename: string;
+  format: string;
+  size: number;
+  expiresAt: number;
+};

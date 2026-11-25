@@ -27,25 +27,27 @@ flowchart LR
 
 ## 模块职责
 
-| 模块                                | 职责                                         |
-| ----------------------------------- | -------------------------------------------- |
-| `domain/captions.ts`                | SRT/VTT解析、时间轴与长度校验、引用编号      |
-| `domain/evidence.ts`                | 引用解析、引用存在性校验、5W1H结构化契约     |
-| `domain/outline.ts`                 | 按明确章节数量重新分组，保留原有正文与引用   |
-| `domain/comparison.ts`              | 按区间连接分组、一对多对齐、人工确认规则     |
-| `server/index.ts`                   | 同源检查、访问码、输入边界、路由分发         |
-| `server/transcript.ts`              | 素材入口与 YouTube 获取                      |
-| `server/catalog.ts`                 | 经过核对的视频与发布方字幕映射、显式快照降级 |
-| `server/ai.ts`                      | 模型协议适配与提示词，不承载会话状态         |
-| `server/session/ArticleSession.ts`  | 会话持久化、生成生命周期、过期与调度         |
-| `server/session/ensure-evidence.ts` | 文章引用核对，只补引用，不重写正文           |
-| `server/session/summarize.ts`       | 章节总结的上下文与引用契约                   |
-| `server/session/reviews.ts`         | 校对版本、识别状态、已确认来源导出           |
-| `server/recognition.ts`             | 火山 submit/query HTTP 协议与错误转换        |
-| `client/useWorkbench.ts`            | 输入、生成、最近记录与导出编排               |
-| `client/hooks`                      | 摘要、原文与校对、移动面板各自的状态生命周期 |
-| `client/Markdown.tsx`               | 清洗 HTML，拦截原文锚点                      |
-| 阅读、素材、总结、原文面板组件      | 展示与交互，领域计算不放在组件中             |
+| 模块                                | 职责                                              |
+| ----------------------------------- | ------------------------------------------------- |
+| `domain/captions.ts`                | SRT/VTT解析、时间轴与长度校验、引用编号           |
+| `domain/evidence.ts`                | 引用解析、引用存在性校验、5W1H结构化契约          |
+| `domain/outline.ts`                 | 按明确章节数量重新分组，保留原有正文与引用        |
+| `domain/comparison.ts`              | 按区间连接分组、一对多对齐、人工确认规则          |
+| `server/index.ts`                   | 同源检查、访问码、输入边界、路由分发              |
+| `server/transcript.ts`              | 素材入口与 YouTube 获取                           |
+| `server/catalog.ts`                 | 经过核对的视频与发布方字幕映射、显式快照降级      |
+| `server/ai.ts`                      | 模型协议适配与提示词，不承载会话状态              |
+| `server/session/ArticleSession.ts`  | 会话持久化、生成生命周期、过期与调度              |
+| `server/session/audio.ts`           | 有大小与时效限制的音轨、令牌下载、Range回听与清理 |
+| `server/youtube.ts`                 | YouTube协议边界、读取实际选择的字幕轨道类型       |
+| `server/session/ensure-evidence.ts` | 文章引用核对，只补引用，不重写正文                |
+| `server/session/summarize.ts`       | 章节总结的上下文与引用契约                        |
+| `server/session/reviews.ts`         | 校对版本、识别状态、已确认来源导出                |
+| `server/recognition.ts`             | 火山 submit/query HTTP 协议与错误转换             |
+| `client/useWorkbench.ts`            | 输入、生成、最近记录与导出编排                    |
+| `client/hooks`                      | 摘要、原文与校对、移动面板各自的状态生命周期      |
+| `client/Markdown.tsx`               | 清洗 HTML，拦截原文锚点                           |
+| 阅读、素材、总结、原文面板组件      | 展示与交互，领域计算不放在组件中                  |
 
 ## 工程判断
 
@@ -64,6 +66,12 @@ flowchart LR
 ### 异步识别与应用取消的边界
 
 火山任务 ID 与状态先持久化，再请求服务。Durable Object alarm 定期查询，关闭网页不会丢任务；查询不会依赖浏览器传回完整字幕。停止等待只停止本应用轮询，不能保证服务商撤销任务。
+
+### 上传与回听
+
+每篇文章最多一份24 MB音轨，1小时后失效；删除文章同时删除音轨。下载使用独立随机令牌，仅允许GET/HEAD，并支持单段Range以便回听。写入时验证文件签名、大小、文章存活和识别状态；识别处理中不允许替换音轨。与文章分开存储分块音频，事务更换与过期清理，不把音频塞进文章JSON或模型上下文。
+
+这是有明确上限的作业实现，复用SQLite Durable Object避免为小规模验收引入额外存储服务；较大文件、转码和正式媒体服务应迁移到对象存储。SQLite DO的单值大小限制与存储语义见[官方限制](https://developers.cloudflare.com/durable-objects/platform/limits/)及[存储接口](https://developers.cloudflare.com/durable-objects/api/legacy-kv-storage-api/)。本地 `dev:asr` 通过只允许音频路径的中继连接[Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)，不把本地开发管理界面暴露出去。
 
 ### 控制复杂度
 

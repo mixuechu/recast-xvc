@@ -1,21 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Check, Upload, LoaderCircle, FileSearch, ExternalLink } from 'lucide-react';
 import type { Workbench } from './useWorkbench';
 import type { ComparisonRow, ReviewDecision } from '../shared';
 import { clock } from '../domain/captions';
+import { RecognitionInput } from './RecognitionInput';
 import { textDiff } from '../domain/text-diff';
 export function CaptionReview({
   model,
 }: {
   model: Pick<Workbench, 'evidence' | 'article' | 'generateReviewed' | 'config' | 'busy'>;
 }) {
-  const { evidence, article, generateReviewed, config } = model;
+  const { evidence, article, generateReviewed } = model;
   const [candidate, setCandidate] = useState(''),
-    [audioUrl, setAudioUrl] = useState(''),
-    [format, setFormat] = useState('mp3'),
     [fileError, setFileError] = useState(''),
     [onlyChanges, setOnlyChanges] = useState(true),
     [page, setPage] = useState(1);
+  const player = useRef<HTMLAudioElement>(null);
+  const [listenAt, setListenAt] = useState<number>();
+  const playAt = (offset: number) => {
+    setListenAt(offset);
+    if (player.current) {
+      player.current.currentTime = offset;
+      void player.current.play().catch(() => {});
+    }
+  };
   useEffect(() => setPage(1), [evidence.review?.createdAt]);
   const rows = evidence.review?.rows.filter((r) => !onlyChanges || r.changed) ?? [];
   const unresolved = evidence.review?.rows.filter((r) => r.changed && !r.confirmed).length ?? 0;
@@ -45,42 +53,25 @@ export function CaptionReview({
       <p className="review-intro">
         比较两份同一音频的字幕，逐段确认分歧。系统标记差异，不自动判定哪一份更准确。
       </p>
-      <details className="recognition-config">
-        <summary>火山辅助识别{!config?.recognitionConfigured && <span>待配置</span>}</summary>
-        <label htmlFor="audio-url">同一视频的公网音频链接</label>
-        <input
-          id="audio-url"
-          type="url"
-          value={audioUrl}
-          onChange={(e) => setAudioUrl(e.target.value)}
-          placeholder="https://…/audio.mp3"
-          disabled={!!running}
-        />
-        <label htmlFor="audio-format">音频格式</label>
-        <select
-          id="audio-format"
-          value={format}
-          onChange={(event) => setFormat(event.target.value)}
-          disabled={!!running}
-        >
-          {['mp3', 'wav', 'm4a', 'aac', 'ogg', 'amr', 'spx'].map((value) => (
-            <option key={value} value={value}>
-              {value.toUpperCase()}
-            </option>
-          ))}
-        </select>
-        <p>将此音频链接发送至火山引擎进行识别，可能产生识别费用。请确认音频与视频版本一致。</p>
-        {!config?.recognitionConfigured && (
-          <p className="inline-warning">服务端尚未配置 ASR，可先导入第二份字幕校对。</p>
-        )}
-        <button
-          className="secondary"
-          disabled={!config?.recognitionConfigured || evidence.busy || !!running || !audioUrl}
-          onClick={() => evidence.recognize(audioUrl, format)}
-        >
-          开始辅助识别
-        </button>
-      </details>
+      <RecognitionInput model={model} running={!!running} />
+      {evidence.audio && (
+        <div className="review-audio">
+          <span>
+            已上传音轨 · {evidence.audio.filename}
+            {listenAt !== undefined && ` · 回听 ${clock(listenAt)}`}
+          </span>
+          <audio
+            ref={player}
+            controls
+            preload="none"
+            src={evidence.audio.url}
+            aria-label="校对音频"
+            onLoadedMetadata={() => {
+              if (listenAt !== undefined && player.current) player.current.currentTime = listenAt;
+            }}
+          />
+        </div>
+      )}
       {evidence.recognition?.taskId && (
         <details className="task-details">
           <summary>识别任务详情</summary>
@@ -111,7 +102,12 @@ export function CaptionReview({
               </button>
             </>
           ) : (
-            '已停止等待。已提交的服务端任务可能仍会产生费用。'
+            <>
+              已停止等待。已提交的服务端任务可能仍会产生费用。
+              <button className="text-button" onClick={() => evidence.resumeRecognition()}>
+                继续查询
+              </button>
+            </>
           )}
         </div>
       )}
@@ -190,6 +186,7 @@ export function CaptionReview({
                   disabled={evidence.busy}
                   choose={evidence.choose}
                   videoId={article?.source.videoId}
+                  listen={evidence.audio ? playAt : undefined}
                 />
               ))
           ) : (
@@ -246,12 +243,14 @@ function ReviewRow({
   disabled,
   choose,
   videoId,
+  listen,
 }: {
   row: ComparisonRow;
   draft?: { decision: ReviewDecision; text?: string };
   disabled: boolean;
   choose: (id: string, decision: ReviewDecision, text?: string) => void;
   videoId?: string;
+  listen?: (offset: number) => void;
 }) {
   const decision = draft?.decision ?? row.decision;
   const diff = useMemo(() => textDiff(row.original, row.candidate), [row.original, row.candidate]);
@@ -264,15 +263,21 @@ function ReviewRow({
         <span className={row.confirmed ? 'confirmed' : 'pending'}>
           {draft ? '尚未保存' : row.confirmed ? '已确认' : '待确认'}
         </span>
-        {videoId && (
-          <a
-            href={`https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(row.offset)}`}
-            target="_blank"
-            rel="noreferrer"
-          >
+        {listen ? (
+          <button className="text-button" onClick={() => listen(row.offset)}>
             回听
-            <ExternalLink size={12} />
-          </a>
+          </button>
+        ) : (
+          videoId && (
+            <a
+              href={`https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(row.offset)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              回听
+              <ExternalLink size={12} />
+            </a>
+          )
         )}
       </header>
       <div className="difference-reasons">
