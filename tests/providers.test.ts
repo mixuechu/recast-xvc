@@ -140,3 +140,53 @@ it('cancels Gemini backoff without sending another request', async () => {
     vi.useRealTimers();
   }
 });
+
+it('honors Retry-After before retrying a busy Gemini response', async () => {
+  vi.useFakeTimers();
+  try {
+    const request = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response('busy', { status: 503, headers: { 'Retry-After': '30' } }),
+      );
+    vi.stubGlobal('fetch', request);
+    const controller = new AbortController();
+    const result = (async () => {
+      for await (const _ of generate(
+        { ...keys, AI_PROVIDER: 'gemini', AI_MODEL: '' },
+        '',
+        '',
+        controller.signal,
+      )) {
+        /*consume*/
+      }
+    })();
+    const assertion = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(29999);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    controller.abort();
+    await assertion;
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('does not retry earlier than a server delay longer than its interactive budget', async () => {
+  const request = vi
+    .fn()
+    .mockResolvedValue(new Response('busy', { status: 503, headers: { 'Retry-After': '120' } }));
+  vi.stubGlobal('fetch', request);
+  const result = (async () => {
+    for await (const _ of generate(
+      { ...keys, AI_PROVIDER: 'gemini', AI_MODEL: '' },
+      '',
+      '',
+      new AbortController().signal,
+    )) {
+      /*consume*/
+    }
+  })();
+  await expect(result).rejects.toThrow('503');
+  expect(request).toHaveBeenCalledTimes(1);
+});

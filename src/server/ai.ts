@@ -1,6 +1,7 @@
 import { readSSE } from '../protocol/sse';
 import { readGemini } from '../protocol/gemini';
 import { requestModel } from './model-request';
+import { modelError } from './model-error';
 export type AIEnv = {
   AI_PROVIDER: string;
   AI_MODEL: string;
@@ -76,13 +77,7 @@ export async function* generate(
     },
     gemini ? 3 : 1,
   );
-  if (!response.ok) {
-    await response.body?.cancel();
-    if (response.status === 401 || response.status === 403)
-      throw new Error('模型授权失败，请检查服务端密钥与模型权限。');
-    if (response.status === 429) throw new Error('模型当前请求较多或额度不足，请稍后重试。');
-    throw new Error(`模型服务暂时不可用（${response.status}），请稍后重试。`);
-  }
+  if (!response.ok) throw await modelError(response, env.AI_PROVIDER);
   if (!response.body) throw new Error('模型未返回响应。');
   if (gemini) {
     yield* readGemini(response.body, signal);

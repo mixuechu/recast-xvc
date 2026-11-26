@@ -5,7 +5,7 @@
 - [在线体验](https://recast-xvc.mixuechu.workers.dev)（访问码由维护者单独提供）
 - [使用说明](docs/USAGE.md) · [架构与代码走读](docs/ARCHITECTURE.md) · [实测记录](docs/VALIDATION.md)
 
-当前线上使用 **DeepSeek `deepseek-flash`**，智谱和Gemini接入保留。**题目指定Gemini的差异尚未解决**：普通Flash已通过真实短请求流式测试，但完整视频请求持续返回503，尚未通过完整验收，因此未作为线上默认。密钥只在服务端。详细边界见[实测记录](docs/VALIDATION.md)。
+当前线上使用 **DeepSeek `deepseek-flash`**，智谱和Gemini接入保留。**题目指定Gemini的差异尚未解决**：普通Flash曾通过真实短请求流式测试，完整视频请求遭遇503；后续明确返回项目免费额度20次/天且已耗尽，尚未通过完整验收，因此未作为线上默认。密钥只在服务端。详细边界见[实测记录](docs/VALIDATION.md)及[Gemini诊断](docs/GEMINI_DIAGNOSTIC.md)。
 
 ## 启动与部署
 

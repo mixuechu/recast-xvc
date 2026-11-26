@@ -25,7 +25,19 @@ export async function requestModel(
     init.signal.throwIfAborted();
     const response = await fetch(url, init);
     if (response.status !== 503 || attempt + 1 >= attempts) return response;
+    const header = response.headers.get('Retry-After');
+    const seconds = header && /^\d+(?:\.\d+)?$/.test(header) ? Number(header) : NaN;
+    const retryAfter = Number.isFinite(seconds)
+      ? seconds * 1000
+      : header
+        ? Date.parse(header) - Date.now()
+        : 0;
+    // A longer server wait must be surfaced, not shortened to fit an interactive request.
+    if (retryAfter > 30000) return response;
     await response.body?.cancel();
-    await pause(1000 * 2 ** attempt + Math.floor(Math.random() * 250), init.signal);
+    await pause(
+      Math.max(1000 * 2 ** attempt + Math.floor(Math.random() * 250), retryAfter || 0),
+      init.signal,
+    );
   }
 }
