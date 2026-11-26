@@ -54,6 +54,7 @@ const article = await (await fetch(`${base}/api/sessions/${id}`, { headers })).j
 assert.equal(article.status, 'interrupted');
 assert.ok(article.markdown.length > 0);
 assert.equal('captions' in article.source, false);
+assert.equal((await post(`/api/sessions/${id}/resume`, {})).status, 409);
 assert.equal((await post(`/api/sessions/${id}/summary`, { chapterId: 'chapter-1' })).status, 409);
 assert.equal(
   (await fetch(`${base}/api/sessions/${id}`, { method: 'DELETE', headers })).status,
@@ -61,5 +62,5 @@ assert.equal(
 );
 assert.equal((await fetch(`${base}/api/sessions/${id}`, { headers })).status, 404);
 console.log(
-  'Passed: config, validation, same-origin protection, missing record, live deltas, explicit cancellation, retained partial content, summary guard, deletion.',
+  'Passed: config, validation, same-origin protection, missing record, live deltas, explicit cancellation, retained partial content, unfinished-draft resume guard, summary guard, deletion.',
 );

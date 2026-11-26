@@ -20,6 +20,7 @@ export class GeminiProvider implements AIProvider {
     prompt,
     signal,
     json = false,
+    maxOutputTokens,
   }: GenerationRequest): AsyncGenerator<string> {
     if (!this.#apiKey) throw new Error('服务端尚未配置模型密钥，请联系部署者。');
     const response = await requestModel(
@@ -38,7 +39,7 @@ export class GeminiProvider implements AIProvider {
           store: false,
           system_instruction: system,
           input: prompt,
-          generation_config: { max_output_tokens: json ? 6000 : 10000 },
+          generation_config: { max_output_tokens: maxOutputTokens ?? (json ? 6000 : 10000) },
           ...(json ? { response_format: { type: 'text', mime_type: 'application/json' } } : {}),
         }),
       },

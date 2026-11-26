@@ -1,13 +1,20 @@
 import { dimensions, type Caption, type CitedSummary } from '../shared';
 export function normalizeCitationLinks(markdown: string, known: ReadonlySet<string>): string {
-  return markdown.replace(
-    /\[([^\]]*)\]\(#(?:source[-_=:])?(c\d{4,})\)/g,
-    (_link, label: string, id: string) => {
-      if (!known.has(id)) throw new Error('文章引用了不存在的原文片段，已保留正文，请重新生成。');
-      return `[${label}](#source-${id})`;
-    },
-  );
+  const link = (label: string, id: string) => {
+    if (!known.has(id)) throw new Error('文章引用了不存在的原文片段，已保留正文，请重新生成。');
+    return `[${label}](#source-${id})`;
+  };
+  return markdown
+    .replace(/\[([^\]]*)\]\(#source[-_=:]([^)]+)\)/gi, (_match, label: string, token: string) => {
+      const cue = /^c{0,2}(\d{4,})$/i.exec(token);
+      if (!cue) throw new Error('原文引用格式无效，已保留正文，请重新生成。');
+      return link(label, `c${cue[1]}`);
+    })
+    .replace(/\[([^\]]*)\]\(#c(\d{4,})\)/gi, (_match, label: string, digits: string) =>
+      link(label, `c${digits}`),
+    );
 }
+
 export function citationIds(markdown: string): string[] {
   return [...new Set([...markdown.matchAll(/\]\(#(?:source[-_=:])?(c\d+)\)/g)].map((m) => m[1]))];
 }

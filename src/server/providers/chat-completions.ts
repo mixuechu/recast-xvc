@@ -30,6 +30,7 @@ abstract class ChatCompletionsProvider implements AIProvider {
     prompt,
     signal,
     json = false,
+    maxOutputTokens,
   }: GenerationRequest): AsyncGenerator<string> {
     const { apiKey, endpoint } = this.#settings;
     if (!apiKey) throw new Error('服务端尚未配置模型密钥，请联系部署者。');
@@ -42,7 +43,7 @@ abstract class ChatCompletionsProvider implements AIProvider {
         stream: true,
         thinking: { type: 'disabled' },
         temperature: 0.4,
-        max_tokens: json ? 2400 : 10000,
+        max_tokens: maxOutputTokens ?? (json ? 2400 : 10000),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: prompt },

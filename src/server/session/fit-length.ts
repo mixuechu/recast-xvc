@@ -1,25 +1,11 @@
 import { readableLength } from '../../domain/requirements';
 import { lengthDescription, withinLength, type LengthBudget } from '../../domain/length';
-import { splitArticle } from '../../shared';
-import { citationIds, normalizeCitationLinks } from '../../domain/evidence';
+import { articleBlocks, applyBlockEdits } from '../../domain/article-edits';
 import { generate, type AIEnv } from '../ai';
-const system = `你是中文文章篇幅编辑。只编辑给定文章，不引入新事实、数字、人物、观点或提问，不使用外部知识。
-保留主标题、全部二级标题及顺序；访谈保留原有讲者的真实问答形式，不得改为第三人称综述，单人讲述不能虚构提问。压缩时允许删除整轮次要问答、次要例子与重复内容，无需保留每一次发言。多人访谈可以每章只留一问一答，保留关键结论、前提和否定限制。篇幅优先于细节覆盖率。扩写只能恢复原稿已有信息，素材不足时不要凑字。
-保留能支持改写后内容的原文引用，不得新编引用编号。每章必须保留至少一个原有的 [原文](#source-c0001) 格式链接；统计时不计入链接，但输出时必须保留链接，不能为了控字数删光引用。
-字数按可读字符计算：每个中文汉字、每个英文字母、每个数字及标点都计1字，包含标题、说话人标签及标点，不含空白、Markdown符号和原文引用链接。
-只输出完整Markdown，不要解释编辑过程；按writingBudget这个内部写作预算控制篇幅，它已为英文字符、标题和标签预留余量。不要因为它小于用户要求而自行扩写，最终范围由程序计数判定。`;
-const speakers = (text: string) =>
-  new Set([...text.matchAll(/^\*\*([^*\n]{1,40})[：:]\*\*/gm)].map((m) => m[1]));
-// A lead repeats the article's overview; omit it only when whole chapters then fit.
-function omitOptionalLead(markdown: string, requirements: string, budget: LengthBudget) {
-  if (/导语|引言|开场|摘要/.test(requirements)) return markdown;
-  const start = markdown.search(/^##\s+/m);
-  const title = markdown.match(/^#\s+.+$/m)?.[0];
-  if (start < 0 || !title) return markdown;
-  if (speakers(markdown.slice(0, start)).size) return markdown;
-  const shorter = `${title}\n\n${markdown.slice(start)}`;
-  return withinLength(readableLength(shorter), budget) ? shorter : markdown;
-}
+const system = `你是中文篇幅编辑，只依据给定的原稿，压缩或恢复原稿已有信息。不添加新事实、数字、人物、观点、问题或建议。保留关键结论、前提、否定和不确定性。
+只改可编辑段落的正文。标题、讲者和引用由程序保留，不要在text中输出标题、讲者标记、链接、HTML或额外空段。按原有风格和受众写作；访谈仍保留真实问答，不能改成第三人称综述。
+只输出JSON：{"edits":[{"id":"p3","text":"保留的短正文"},{"id":"p4","text":""}]}。每个输入段落id必须恰好出现一次，顺序无关。可以用空text删除允许省略的完整段落，但每章必须保留有依据的内容；若本组有hasEvidence为true的段落，至少保留其中一段；原来有多人问答的章节，仍需保留问答双方。requiredSpeakers列出的每位讲者必须至少保留一段发言。不要删除所有次要问句后留下无法理解的回答。每个text只能编辑同一id的原段落，不得合并其他id的事实。压缩时大部分次要段落可以为空，不必为每个id填入正文；完整保留每个id只指JSON条目完整。
+按可读字符数控制长度：中文、英文字母、数字和标点各计1，标题与讲者也计入，空白、Markdown符号与引用链接不计。finalRange是本组正文的目标范围，最终全篇范围由程序验收。bodyWritingBudget是本轮校准后的正文写作预算（不含标题和讲者），请按它写，不要自行放宽；单章正文控制在chapterWritingBudget以内。总共最多保留maxRetainedParagraphs个有文字的段落，其他id仍输出空text。访谈通常每章只需保留最重要的1至2轮真实问答，不必覆盖每个原稿细节。补充信息时只能恢复originalText已有的论证，不重复凑字。`;
 export async function fitLength(
   env: AIEnv,
   markdown: string,
@@ -29,91 +15,77 @@ export async function fitLength(
 ): Promise<string> {
   signal.throwIfAborted();
   if (withinLength(readableLength(markdown), budget)) return markdown;
-  const withoutLead = omitOptionalLead(markdown, requirements, budget);
-  if (withoutLead !== markdown) return withoutLead;
-  if (!splitArticle(markdown).length) throw new Error('文章章节不完整，无法调整篇幅，已保留初稿。');
+  const blocks = articleBlocks(markdown, /导语|引言|开场|摘要/.test(requirements));
+  const editable = blocks.filter((b) => b.editable);
+  if (!editable.length) throw new Error('初稿缺少可编辑的正文，已保留初稿。');
   let current = markdown;
-  const dialogue = speakers(markdown).size >= 2;
-  const known = new Set(citationIds(markdown));
-  // A ceiling permits a shorter result; leave extra room for headings and speaker labels.
-  let writingBudget = Math.round(budget.target * (budget.min === 0 ? 0.5 : 0.75));
+  const chapterCount = Math.max(1, new Set(editable.map((b) => b.chapter)).size);
+  const fixedLength = readableLength(
+    blocks
+      .filter((b) => !b.editable)
+      .map((b) => b.text)
+      .join(''),
+  );
+  let writingBudget = Math.max(40, budget.target - fixedLength);
+  let currentTexts = new Map<string, string>();
   for (let attempt = 0; attempt < 3; attempt++) {
-    const reducing = budget.max !== undefined && readableLength(current) > budget.max;
-    let revised = '';
-    for await (const delta of generate(
-      env,
-      system,
-      JSON.stringify({
-        article: current,
-        originalArticle: attempt && readableLength(current) < budget.min ? markdown : undefined,
-        currentLength: readableLength(current),
-        chapterCount: splitArticle(markdown).length,
-        preserveLead: /导语|引言|开场|摘要/.test(requirements),
-        preserveOriginalStyleAndAudience: true,
-        suggestedBodyLengthPerChapter: Math.max(
-          20,
-          Math.floor(
-            (writingBudget -
-              readableLength((markdown.match(/^#{1,2}\s+.+$/gm) ?? []).join('')) -
-              60) /
-              splitArticle(markdown).length,
-          ),
-        ),
-        writingBudget,
-        validationFeedback: attempt
-          ? `上一轮实际为${readableLength(current)}字，仍未达标。需再${readableLength(current) > budget.target ? '删减' : '补充'}约${Math.abs(readableLength(current) - budget.target)}个可读字符。请按程序计数纠正，不得为了保留次要细节超过范围。`
-          : undefined,
-      }) +
-        `\n本次编辑使用约 ${writingBudget} 字的内部写作预算。${reducing ? '压缩正文，允许舍弃次要问题和例子，不要追求覆盖所有原稿细节。' : '当前文字偏短，请恢复原稿已提供的论证和例子，适当展开；不要继续压缩，不得重复凑字或添加新事实。'}${attempt === 2 ? `这是最后一轮小幅调整：当前实测${readableLength(current)}字，只需${reducing ? `保留约${Math.round((budget.target / readableLength(current)) * 100)}%的文字` : `从原稿补回约${budget.target - readableLength(current)}字的已有细节`}，不要重新铺陈整篇论证。` : ''}${dialogue ? '保持原有讲者的真实问答。' : '保持原有讲述形式，不得虚构问答。'}主标题、二级标题和原文链接原样保留。直接输出调整后的 Markdown。`,
-      signal,
-    )) {
-      signal.throwIfAborted();
-      revised += delta;
-      if (revised.length > 100000) throw new Error('篇幅调整结果过长，已保留初稿。');
+    const edits: { id: string; text: string }[] = [];
+    for (const chapter of new Set(editable.map((b) => b.chapter))) {
+      const group = editable.filter((b) => b.chapter === chapter);
+      const chapterBudget = Math.max(20, Math.floor(writingBudget / chapterCount));
+      let response = '';
+      for await (const delta of generate(
+        env,
+        system,
+        JSON.stringify({
+          requiredSpeakers: [...new Set(group.map((b) => b.speaker).filter(Boolean))].slice(0, 2),
+          scope: '只编辑本组段落，预算只针对本组正文；不要覆盖其他章节。',
+          finalRange: `${Math.floor(chapterBudget * 0.9)}–${chapterBudget}字，仅本组正文`,
+          bodyWritingBudget: chapterBudget,
+          chapterWritingBudget: chapterBudget,
+          maxRetainedParagraphs: Math.max(2, Math.floor(chapterBudget / 100)),
+          validationFeedback: attempt
+            ? `上一轮全篇实测${readableLength(current)}字，最终要求${lengthDescription(budget)}。本轮已按实测校准本组写作预算，请严格按bodyWritingBudget整理。`
+            : undefined,
+          blocks: group.map((b) => ({
+            id: b.id,
+            speaker: b.speaker,
+            canOmit: b.canOmit,
+            hasEvidence: b.refs.length > 0,
+            text: currentTexts.get(b.id) ?? b.text,
+            originalText: attempt > 0 && readableLength(current) < budget.min ? b.text : undefined,
+          })),
+          fixedText: blocks
+            .filter((b) => !b.editable && (b.chapter === chapter || b.chapter === 0))
+            .map((b) => b.text),
+          finalInstruction: `最后要求：本组正文合计按约${chapterBudget}字的写作预算整理，不含标题、讲者和引用。当前本组正文约${group.reduce((sum, b) => sum + readableLength(currentTexts.get(b.id) ?? b.text), 0)}字。${readableLength(current) < budget.min ? '当前全篇偏短，必须从每个id的originalText恢复已有的论证、限定或例子，不能只复述当前短稿。' : '优先删除次要整段并压缩保留段落，不必覆盖原稿每个细节。'}每位requiredSpeakers至少保留一段；有hasEvidence段落时至少保留其中一段。只返回本组id和text的JSON。`,
+        }),
+        signal,
+        true,
+        10000,
+      )) {
+        signal.throwIfAborted();
+        response += delta;
+        if (response.length > 100000) throw new Error('篇幅编辑返回过长，初稿已保留。');
+      }
+      const data = JSON.parse(response.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+      if (
+        !Array.isArray(data?.edits) ||
+        data.edits.length !== group.length ||
+        data.edits.some((edit: { id?: string }) => !group.some((b) => b.id === edit?.id))
+      )
+        throw new Error('篇幅编辑返回的段落不完整，初稿已保留。');
+      edits.push(...data.edits);
     }
-    revised = revised.replace(/^```(?:markdown|md)?\s*\n|\n```\s*$/g, '').trim();
-    revised = normalizeCitationLinks(revised, known);
-    const headings = (text: string) => text.match(/^#{1,2}\s+.+$/gm) ?? [];
-    const originalHeadings = headings(markdown),
-      editedHeadings = headings(revised);
-    if (
-      editedHeadings.length !== originalHeadings.length ||
-      editedHeadings.some(
-        (heading, i) => heading.match(/^#+/)?.[0] !== originalHeadings[i].match(/^#+/)?.[0],
-      ) ||
-      !splitArticle(revised).length
-    )
-      throw new Error('篇幅调整改变了章节结构，已保留初稿，请重试。');
-    // Titles are immutable metadata; restore them by position, then verify chapter evidence below.
-    let headingIndex = 0;
-    revised = revised.replace(/^#{1,2}\s+.+$/gm, () => originalHeadings[headingIndex++]);
-    revised = omitOptionalLead(revised, requirements, budget);
-    const previous = speakers(markdown),
-      next = speakers(revised);
-    if (
-      previous.size &&
-      (next.size < Math.min(previous.size, 2) || [...next].some((name) => !previous.has(name)))
-    )
-      throw new Error('篇幅调整未保留原有讲者，已保留初稿，请重试。');
-    if (citationIds(revised).some((id) => !known.has(id)))
-      throw new Error('篇幅调整引入了新的引用编号，已保留初稿，请重试。');
-    const previousChapters = splitArticle(markdown),
-      nextChapters = splitArticle(revised);
-    if (
-      previousChapters.some((chapter, i) => {
-        const refs = new Set(citationIds(chapter.markdown));
-        return refs.size > 0 && !citationIds(nextChapters[i].markdown).some((id) => refs.has(id));
-      })
-    )
-      throw new Error('篇幅调整丢失了章节原文依据，已保留初稿，请重试。');
-    if (withinLength(readableLength(revised), budget)) return revised;
+    current = applyBlockEdits(blocks, { edits });
+    currentTexts = new Map(edits.map((edit) => [edit.id, edit.text.trim()]));
+    if (withinLength(readableLength(current), budget)) return current;
     writingBudget = Math.max(
-      20,
-      Math.round((writingBudget * budget.target) / readableLength(revised)),
+      40,
+      Math.round((writingBudget * budget.target) / readableLength(current)),
     );
-    current = revised;
   }
   throw new Error(
-    `篇幅调整后仍未达标：要求${lengthDescription(budget)}，实际 ${readableLength(current)} 字。已保留初稿，请调整要求后重试。`,
+    `篇幅调整后仍未达标：要求${lengthDescription(budget)}，实际 ${readableLength(current)} 字。已保留初稿，可继续整理或调整要求。`,
   );
 }

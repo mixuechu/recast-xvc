@@ -23,6 +23,8 @@ export type Source = {
 };
 export type Chapter = { id: string; title: string; markdown: string };
 export const dimensions = ['Who', 'What', 'When', 'Where', 'Why', 'How'] as const;
+export type ProcessingStage = 'evidence' | 'length';
+export type GenerationStage = 'source' | 'writing' | ProcessingStage;
 export type Article = {
   id: string;
   source: Omit<Source, 'captions'>;
@@ -33,6 +35,8 @@ export type Article = {
   status: 'generating' | 'complete' | 'interrupted';
   expiresAt: number;
   citationCount?: number;
+  processingStage?: ProcessingStage;
+  failure?: string;
 };
 export function videoId(input: string): string {
   let u: URL;
@@ -78,7 +82,8 @@ export type CitedSummary = Record<(typeof dimensions)[number], CitedField>;
 export type SourceMeta = Omit<Source, 'captions'>;
 export type GenerationEvent =
   | { type: 'session'; id: string }
-  | { type: 'status'; message: string }
+  | { type: 'status'; message: string; stage?: GenerationStage }
+  | { type: 'checkpoint'; markdown: string; stage: ProcessingStage }
   | ({ type: 'source' } & SourceMeta)
   | { type: 'delta'; text: string }
   | {
@@ -88,5 +93,5 @@ export type GenerationEvent =
       citationCount: number;
       markdown: string;
     }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; canResume?: boolean }
   | { type: 'heartbeat' };

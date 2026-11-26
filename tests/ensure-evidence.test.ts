@@ -95,3 +95,41 @@ it.each(
     ),
   ).rejects.toThrow();
 });
+
+it('checks short dialogue questions, joins standalone speaker labels and drops empty labels', async () => {
+  vi.mocked(generate).mockImplementation(async function* () {
+    yield JSON.stringify({ paragraphs: [{ id: 'p1', citationIds: ['c0001'] }] });
+  });
+  const original = '# T\n\n**一位没有发言的受访者：**\n\n**提问者：**\n\n为什么？';
+  expect(await ensureEvidence(env, source, original, new AbortController().signal)).toBe(
+    '# T\n\n**提问者：** 为什么？ [原文](#source-c0001)',
+  );
+});
+
+it('checkpoints successful batches and retries only the still-missing paragraphs', async () => {
+  const original =
+    '# T\n\n' +
+    Array.from({ length: 13 }, (_, i) => `**提问者：** 第${i}个有待核对的真实问题。`).join('\n\n');
+  let calls = 0;
+  vi.mocked(generate).mockImplementation(async function* (_env, _system, prompt) {
+    const data = JSON.parse(prompt);
+    calls++;
+    if (calls === 2) throw new Error('Transient failure');
+    yield JSON.stringify({
+      paragraphs: data.targetParagraphs.map((p: { id: string }) => ({
+        id: p.id,
+        citationIds: ['c0001'],
+      })),
+    });
+  });
+  let checkpoint = original;
+  await expect(
+    ensureEvidence(env, source, original, new AbortController().signal, async (partial) => {
+      checkpoint = partial;
+    }),
+  ).rejects.toThrow('Transient');
+  expect(checkpoint.match(/source-c0001/g) || []).toHaveLength(12);
+  const result = await ensureEvidence(env, source, checkpoint, new AbortController().signal);
+  expect(result.match(/source-c0001/g) || []).toHaveLength(13);
+  expect(JSON.parse(vi.mocked(generate).mock.calls[2][2]).targetParagraphs).toHaveLength(1);
+});

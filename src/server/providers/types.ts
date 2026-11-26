@@ -11,6 +11,7 @@ export type GenerationRequest = {
   prompt: string;
   signal: AbortSignal;
   json?: boolean;
+  maxOutputTokens?: number;
 };
 export interface AIProvider {
   readonly name: ProviderName;

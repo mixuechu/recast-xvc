@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Workbench } from './useWorkbench';
 import { Markdown } from './Markdown';
+import { GenerationProgress } from './GenerationProgress';
 import { readableLength } from '../domain/requirements';
 export function ArticleReader({ model }: { model: Workbench }) {
   const {
@@ -31,6 +32,8 @@ export function ArticleReader({ model }: { model: Workbench }) {
     chapters,
     intro,
     start,
+    resume,
+    generationStage,
     openSummary,
     copy,
     download,
@@ -38,6 +41,7 @@ export function ArticleReader({ model }: { model: Workbench }) {
     evidence,
     startRealExample,
   } = model;
+  const canResume = article?.status === 'interrupted' && !!article.processingStage;
   return (
     <main inert={mobile && sidebar} className="main" id="main">
       <div className="reading-toolbar">
@@ -85,7 +89,12 @@ export function ArticleReader({ model }: { model: Workbench }) {
       {article && !busy && (
         <div className="evidence-entry">
           <button onClick={() => evidence.show()}>
-            查看原文依据<span>{article.citationCount ?? 0} 条原文</span>
+            查看原文依据
+            <span>
+              {article.status === 'complete'
+                ? `${article.citationCount ?? 0} 条原文`
+                : '核对当前初稿'}
+            </span>
           </button>
         </div>
       )}
@@ -159,7 +168,9 @@ export function ArticleReader({ model }: { model: Workbench }) {
                     ? '原创示例'
                     : article?.source.kind === 'manual'
                       ? '导入字幕'
-                      : 'YOUTUBE'}
+                      : article
+                        ? 'YOUTUBE'
+                        : '素材'}
                 </span>
                 <span
                   className={busy ? 'generation-status busy' : 'generation-status'}
@@ -174,6 +185,31 @@ export function ArticleReader({ model }: { model: Workbench }) {
                   </span>
                 )}
               </div>
+              {busy && <GenerationProgress stage={generationStage} />}
+              {!busy && article?.status === 'interrupted' && article.markdown && (
+                <div className="draft-recovery">
+                  <div>
+                    <strong>初稿已保存</strong>
+                    <p>
+                      {canResume
+                        ? '沿用这篇文章的素材与要求，继续完成篇幅整理和原文核对。'
+                        : '这份初稿尚未通过校验，可以保留当前内容或重新生成。'}
+                    </p>
+                  </div>
+                  <div className="recovery-actions">
+                    {canResume && (
+                      <button className="primary" disabled={!config?.configured} onClick={resume}>
+                        <Play size={14} />
+                        继续整理
+                      </button>
+                    )}
+                    <button className="secondary" onClick={() => start()}>
+                      <RotateCcw size={14} />
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+              )}
               {article?.source.videoId && (
                 <a
                   className="source-link"
@@ -188,7 +224,16 @@ export function ArticleReader({ model }: { model: Workbench }) {
               {article?.source.kind === 'sample' && (
                 <p className="source-disclosure">此素材为原创示例对话，不是指定参考视频的字幕。</p>
               )}
-              {article?.source.notice && <p className="source-notice">{article.source.notice}</p>}
+              {article?.source.retrievedBy === 'supadata' ? (
+                <p className="caption-provenance">
+                  视频现有字幕
+                  {article.source.language && (
+                    <span> · {article.source.language.toUpperCase()}</span>
+                  )}
+                </p>
+              ) : article?.source.notice ? (
+                <p className="source-notice">{article.source.notice}</p>
+              ) : null}
               {article?.requirements && (
                 <details className="applied-requirements">
                   <summary>
@@ -241,14 +286,8 @@ export function ArticleReader({ model }: { model: Workbench }) {
               )}
               {!busy && article?.markdown && (
                 <div className="article-end">
-                  <span>{article.status === 'complete' ? '全文完' : '内容未完整生成'}</span>
+                  <span>{article.status === 'complete' ? '全文完' : '初稿尚未完成校验'}</span>
                   <p>AI 整理可能存在疏漏，重要信息请核对原始字幕。</p>
-                  {article.status !== 'complete' && (
-                    <button className="secondary" onClick={() => start()}>
-                      <RotateCcw size={15} />
-                      重新生成
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -263,16 +302,6 @@ export function ArticleReader({ model }: { model: Workbench }) {
                 ))
               ) : (
                 <p>章节将在生成后出现</p>
-              )}
-              {chapters.length > 0 && (
-                <div className="outline-tip">
-                  <Sparkles size={15} />
-                  <p>
-                    点击章节旁的 5W1H，
-                    <br />
-                    展开六个维度的总结。
-                  </p>
-                </div>
               )}
             </nav>
           </div>

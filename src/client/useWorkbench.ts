@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { splitArticle, videoId, type Article, type GenerationEvent, type Source } from '../shared';
+import {
+  splitArticle,
+  videoId,
+  type Article,
+  type GenerationEvent,
+  type Source,
+  type GenerationStage,
+} from '../shared';
 import { captionText } from '../domain/captions';
 import { readSSE } from '../protocol/sse';
 import { useApi } from './api';
@@ -21,6 +28,7 @@ export function useWorkbench() {
   const [article, setArticle] = useState<Article | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [generationStage, setGenerationStage] = useState<GenerationStage>('source');
   const [error, setError] = useState('');
   const [config, setConfig] = useState<Config | null>(null);
   const [access, setAccess] = useState(
@@ -73,6 +81,7 @@ export function useWorkbench() {
           ? ((await (await api(`/api/sessions/${id}/source`)).json()) as Source)
           : undefined;
       if (epoch !== restoreEpoch.current) return;
+      setError(data.failure ?? '');
       setRequirements(data.requirements);
       setTranscript(source ? captionText(source.captions) : '');
       setArticle(data);
@@ -101,54 +110,66 @@ export function useWorkbench() {
         ...previous.filter((x) => x.id !== data.id),
       ].slice(0, 8),
     );
-  const start = async (sample = false, videoUrl?: string) => {
-    if (busy) return;
+  const run = async (path: string, payload?: object, seed?: Article) => {
+    if (aborter.current) return;
     restoreEpoch.current++;
-    const selected = videoUrl ? 'youtube' : sample ? 'sample' : mode;
-    try {
-      if (selected === 'youtube') videoId(videoUrl ?? url);
-      if (selected === 'manual' && transcript.trim().length < 80)
-        throw new Error('请粘贴至少 80 字的字幕。');
-    } catch (e) {
-      setError((e as Error).message);
-      return;
-    }
-    if (sample) setMode('sample');
     setError('');
     setBusy(true);
-    setStatus('正在连接');
+    setStatus(seed ? '正在继续整理初稿' : '正在连接');
+    setGenerationStage(seed?.processingStage ?? 'source');
     setSidebar(false);
-    setArticle(null);
-    currentId.current = '';
+    setArticle(seed ? { ...seed, status: 'generating' } : null);
+    currentId.current = seed?.id ?? '';
     aborter.current = new AbortController();
     let complete = false;
-    let next: Article | null = null;
+    let next: Article | null = seed ? { ...seed, status: 'generating' } : null;
     let frame: number | undefined;
     try {
-      const response = await api('/api/generate', {
+      if (seed) {
+        setRequirements(seed.requirements);
+        setMode(
+          seed.source.kind === 'manual'
+            ? 'manual'
+            : seed.source.kind === 'sample'
+              ? 'sample'
+              : 'youtube',
+        );
+        if (seed.source.videoId) setUrl(`https://www.youtube.com/watch?v=${seed.source.videoId}`);
+        if (seed.source.kind === 'manual') {
+          const source = (await (
+            await api(`/api/sessions/${seed.id}/source`, { signal: aborter.current.signal })
+          ).json()) as Source;
+          setTranscript(captionText(source.captions));
+        }
+      }
+      const response = await api(path, {
         method: 'POST',
         signal: aborter.current.signal,
-        body: JSON.stringify({
-          mode: selected,
-          url: videoUrl ?? url,
-          transcript,
-          requirements,
-        }),
+        ...(payload ? { body: JSON.stringify(payload) } : {}),
       });
       if (!response.body) throw new Error('未收到生成响应，请重试。');
-      for await (const payload of readSSE(response.body, aborter.current.signal)) {
-        const data = JSON.parse(payload) as GenerationEvent;
+      for await (const eventData of readSSE(response.body, aborter.current.signal)) {
+        const data = JSON.parse(eventData) as GenerationEvent;
         if (data.type === 'session') {
           currentId.current = data.id;
         } else if (data.type === 'status') {
           setStatus(data.message);
+          if (data.stage) setGenerationStage(data.stage);
+        } else if (data.type === 'checkpoint' && next) {
+          next.markdown = data.markdown;
+          next.chapters = splitArticle(data.markdown);
+          next.processingStage = data.stage;
+          setGenerationStage(data.stage);
+          remember(next);
+          setArticle({ ...next });
         } else if (data.type === 'error') {
+          if (next && data.canResume === false) delete next.processingStage;
           throw new Error(data.message);
         } else if (data.type === 'source') {
           next = {
             id: currentId.current,
             source: data,
-            requirements,
+            requirements: (payload as { requirements?: string })?.requirements ?? '',
             markdown: '',
             chapters: [],
             createdAt: Date.now(),
@@ -168,6 +189,8 @@ export function useWorkbench() {
           next.chapters = data.chapters;
           next.expiresAt = data.expiresAt;
           next.status = 'complete';
+          delete next.processingStage;
+          delete next.failure;
           next.citationCount = data.citationCount;
           if (typeof data.markdown === 'string') next.markdown = data.markdown;
           complete = true;
@@ -186,6 +209,8 @@ export function useWorkbench() {
       }
       if (next) {
         next.status = 'interrupted';
+        if ((e as Error).name !== 'AbortError') next.failure = (e as Error).message;
+        remember(next);
         setArticle({ ...next });
       }
     } finally {
@@ -193,6 +218,24 @@ export function useWorkbench() {
       setBusy(false);
       aborter.current = null;
     }
+  };
+  const start = async (sample = false, videoUrl?: string) => {
+    if (busy || aborter.current) return;
+    const selected = videoUrl ? 'youtube' : sample ? 'sample' : mode;
+    try {
+      if (selected === 'youtube') videoId(videoUrl ?? url);
+      if (selected === 'manual' && transcript.trim().length < 80)
+        throw new Error('请粘贴至少 80 字的字幕。');
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
+    if (sample) setMode('sample');
+    await run('/api/generate', { mode: selected, url: videoUrl ?? url, transcript, requirements });
+  };
+  const resume = async () => {
+    if (!article?.processingStage || article.status !== 'interrupted' || busy) return;
+    await run(`/api/sessions/${article.id}/resume`, undefined, article);
   };
   const startRealExample = () => {
     const link = 'https://www.youtube.com/watch?v=nykOeWgQcHM';
@@ -264,6 +307,8 @@ export function useWorkbench() {
     intro,
     restore,
     start,
+    resume,
+    generationStage,
     cancel,
     copy,
     download,

@@ -178,6 +178,7 @@ export function SourcePanel({ model }: { model: Workbench }) {
             <input
               id="access"
               type="password"
+              disabled={busy}
               value={access}
               onChange={(e) => {
                 setAccess(e.target.value);

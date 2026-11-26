@@ -89,3 +89,22 @@ it('accepts a long English interview without dropping transcript text', () => {
   const text = 'English interview. '.repeat(5500);
   expect(normalizeCaptions([{ text, offset: 0, duration: 7200 }])[0].text).toBe(text.trim());
 });
+
+it('normalizes cue prefix typos only when the real source ID exists', async () => {
+  const { normalizeCitationLinks } = await import('../src/domain/evidence');
+  expect(normalizeCitationLinks('[原文](#source-cc0001)', new Set(['c0001']))).toBe(
+    '[原文](#source-c0001)',
+  );
+  expect(normalizeCitationLinks('[原文](#source-0001)', new Set(['c0001']))).toBe(
+    '[原文](#source-c0001)',
+  );
+  expect(() => normalizeCitationLinks('[原文](#source-9999)', new Set(['c0001']))).toThrow(
+    '不存在',
+  );
+  expect(() => normalizeCitationLinks('[原文](#source-cc9999)', new Set(['c0001']))).toThrow(
+    '不存在',
+  );
+  expect(() => normalizeCitationLinks('[原文](#source-not-a-cue)', new Set(['c0001']))).toThrow(
+    '格式',
+  );
+});

@@ -35,9 +35,7 @@ export default {
             (input.mode === 'manual' && typeof input.transcript !== 'string')
           )
             return json({ error: '请填写视频链接或字幕。' }, 400);
-          const quota = await env.QUOTAS.get(
-            env.QUOTAS.idFromName(request.headers.get('CF-Connecting-IP') ?? 'local'),
-          ).fetch(new Request('https://internal/consume', { method: 'POST' }));
+          const quota = await consumeQuota(request, env);
           if (!quota.ok) return quota;
           const id = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
             byte.toString(16).padStart(2, '0'),
@@ -55,13 +53,18 @@ export default {
             }),
           );
         } else {
-          const match = /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source))?$/.exec(
-            url.pathname,
-          );
+          const match =
+            /^\/api\/sessions\/([a-f0-9]{64})(?:\/(summary|cancel|source|resume))?$/.exec(
+              url.pathname,
+            );
           if (!match) return json({ error: '接口不存在。' }, 404);
           const [, id, action] = match;
           const allowed = action === 'source' ? ['GET'] : action ? ['POST'] : ['GET', 'DELETE'];
           if (!allowed.includes(request.method)) return json({ error: '请求方法不支持。' }, 405);
+          if (action === 'resume') {
+            const quota = await consumeQuota(request, env);
+            if (!quota.ok) return quota;
+          }
           const payload = action === 'summary' ? await body(request) : undefined;
           response = await env.SESSIONS.get(env.SESSIONS.idFromName(id)).fetch(
             new Request(`https://internal/${action ?? 'article'}`, {
@@ -84,3 +87,9 @@ export default {
     return new Response(response.body, { status: response.status, headers });
   },
 } satisfies ExportedHandler<Env>;
+
+function consumeQuota(request: Request, env: Env) {
+  return env.QUOTAS.get(
+    env.QUOTAS.idFromName(request.headers.get('CF-Connecting-IP') ?? 'local'),
+  ).fetch(new Request('https://internal/consume', { method: 'POST' }));
+}
