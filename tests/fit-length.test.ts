@@ -101,3 +101,9 @@ it('restores immutable titles after model wording changes', async () => {
   answer(after.replace('# 访谈', '# 采访').replace('## 主题', '## Topic'));
   expect(await fitLength(env, before, '100字以内', budget, signal())).toBe(after);
 });
+
+it('retains original evidence when draft anchors use a supported separator alias', async () => {
+  answer(after);
+  const draft = before.replace(/#source-/g, '#source_');
+  expect(await fitLength(env, draft, '100字以内', budget, signal())).toBe(after);
+});

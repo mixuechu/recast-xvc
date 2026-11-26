@@ -5,7 +5,7 @@
 - [在线体验](https://recast-xvc.mixuechu.workers.dev)（访问码由维护者单独提供）
 - [使用说明](docs/USAGE.md) · [架构与代码走读](docs/ARCHITECTURE.md) · [实测记录](docs/VALIDATION.md)
 
-当前线上使用 **DeepSeek `deepseek-flash`**，智谱和Gemini接入保留。**题目指定Gemini的差异尚未解决**：普通Flash曾通过真实短请求流式测试，完整视频请求遭遇503；后续明确返回项目免费额度20次/天且已耗尽，尚未通过完整验收，因此未作为线上默认。密钥只在服务端。详细边界见[实测记录](docs/VALIDATION.md)及[Gemini诊断](docs/GEMINI_DIAGNOSTIC.md)。
+当前默认使用 **DeepSeek `deepseek-flash`**。Gemini与智谱的完整接入以独立Provider类保留，未启用，不会在失败时自动切换厂商。题目指定Gemini的模型差异仍保留说明，历史验收与限制见[实测记录](docs/VALIDATION.md)及[Gemini诊断](docs/GEMINI_DIAGNOSTIC.md)。密钥只在服务端。
 
 ## 启动与部署
 
@@ -35,7 +35,7 @@ npm run deploy
 
 **YouTube 字幕。** 服务端优先使用 [Supadata](https://docs.supadata.ai/get-transcript) 的 `native` 模式，只读取视频已有字幕；优先选择英文字幕（无英文时由服务返回可用字幕，并显示实际语言），统一转换毫秒时间轴、分配稳定片段编号、视频字幕限制为150,000字符及6,000片段，手动输入限制为100,000字符。不自动触发音频转录。成功结果按视频缓存24小时，同视频并发合并，失败不缓存。未配置此服务时保留直接读取适配器，但 YouTube 可能拒绝 Cloudflare 出口。可手动导入 SRT、VTT 或文本；不把演示素材或快照冒充目标视频的实时结果。
 
-**模型与流式。** `server/ai.ts` 通过 Fetch 调用 Gemini `interactions?alt=sse`（`store=false`，会话由本应用管理） 、DeepSeek 或智谱流式接口，统一解析 UTF-8 分片、SSE 增量及结束状态。Worker 将真实增量传给浏览器，Markdown 经 DOMPurify 清洗后渲染，支持停止、断流提示和部分内容保留。
+**模型与流式。** `server/ai.ts` 通过 `createProvider(env)` 创建选中的 `AIProvider` 对象。`DeepSeekProvider`、`GeminiProvider`、`ZhipuProvider` 分别封装对应厂商的流式和JSON接口。DeepSeek与智谱共享Chat Completions协议；Gemini使用 `interactions?alt=sse`（`store=false`，会话由本应用管理）。协议层统一处理UTF-8分片、增量与结束状态，Worker将真实增量传给浏览器，Markdown经DOMPurify清洗后渲染，支持停止、断流提示和部分内容保留。
 
 **生成要求。** 用户要求作为独立数据传入模型，影响任务、风格、受众、篇幅与重点，不能覆盖事实忠实性。多人素材保留对话，单人讲述不虚构问答。明确章节数量通过纯函数重组已有段落，避免再次调用模型重写；事实质量仍需人工核对。
 

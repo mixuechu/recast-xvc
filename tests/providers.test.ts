@@ -1,5 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { generate, modelKey } from '../src/server/ai';
+import { generate } from '../src/server/ai';
+import {
+  createProvider,
+  DeepSeekProvider,
+  GeminiProvider,
+  ZhipuProvider,
+} from '../src/server/providers';
 afterEach(() => vi.unstubAllGlobals());
 const keys = {
   GEMINI_API_KEY: 'gemini-secret',
@@ -7,24 +13,37 @@ const keys = {
   DEEPSEEK_API_KEY: 'deepseek-secret',
 };
 it.each([
-  ['gemini', 'gemini-secret'],
-  ['zhipu', 'zhipu-secret'],
-  ['deepseek', 'deepseek-secret'],
-])('selects only the configured %s credential', (provider, key) =>
-  expect(modelKey({ ...keys, AI_PROVIDER: provider, AI_MODEL: '' })).toBe(key),
-);
+  ['deepseek', DeepSeekProvider, 'deepseek-flash'],
+  ['gemini', GeminiProvider, 'gemini-3.6-flash'],
+  ['zhipu', ZhipuProvider, 'glm-4.7'],
+] as const)('creates the selected %s provider without exposing keys', (name, Provider, model) => {
+  const provider = createProvider({ ...keys, AI_PROVIDER: name, AI_MODEL: '' });
+  expect(provider).toBeInstanceOf(Provider);
+  expect(provider.name).toBe(name);
+  expect(provider.model).toBe(model);
+  expect(provider.configured).toBe(true);
+  for (const key of Object.values(keys)) expect(JSON.stringify(provider)).not.toContain(key);
+});
+it.each(['deepseek', 'gemini', 'zhipu'])('reports a missing %s credential', (name) => {
+  expect(createProvider({ AI_PROVIDER: name, AI_MODEL: '' }).configured).toBe(false);
+});
 it('rejects an unknown provider instead of silently sending another provider key', () =>
-  expect(() => modelKey({ ...keys, AI_PROVIDER: 'typo', AI_MODEL: '' })).toThrow('配置无效'));
+  expect(() => createProvider({ ...keys, AI_PROVIDER: 'typo', AI_MODEL: '' })).toThrow('配置无效'));
 const stream = (content: string) =>
   new Response(
     `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'hidden', content }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
   );
-it.each([false, true])('routes DeepSeek chat/JSON to its own endpoint (json=%s)', async (json) => {
+it.each([
+  ['deepseek', false],
+  ['deepseek', true],
+  ['zhipu', false],
+  ['zhipu', true],
+] as const)('routes %s chat/JSON to its own endpoint (json=%s)', async (provider, json) => {
   const request = vi.fn().mockResolvedValue(stream(json ? '{}' : '中文增量'));
   vi.stubGlobal('fetch', request);
   let result = '';
   for await (const chunk of generate(
-    { ...keys, AI_PROVIDER: 'deepseek', AI_MODEL: '' },
+    { ...keys, AI_PROVIDER: provider, AI_MODEL: '' },
     'system json',
     'prompt',
     new AbortController().signal,
@@ -32,31 +51,42 @@ it.each([false, true])('routes DeepSeek chat/JSON to its own endpoint (json=%s)'
   ))
     result += chunk;
   expect(result).toBe(json ? '{}' : '中文增量');
-  expect(request.mock.calls[0][0]).toBe('https://api.deepseek.com/chat/completions');
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls[0][0]).toBe(
+    provider === 'deepseek'
+      ? 'https://api.deepseek.com/chat/completions'
+      : 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+  );
   const init = request.mock.calls[0][1];
-  expect(init.headers.Authorization).toBe('Bearer deepseek-secret');
+  expect(init.headers.Authorization).toBe(
+    `Bearer ${provider === 'deepseek' ? keys.DEEPSEEK_API_KEY : keys.ZHIPU_API_KEY}`,
+  );
   const body = JSON.parse(init.body);
-  expect(body.model).toBe('deepseek-flash');
+  expect(body.model).toBe(provider === 'deepseek' ? 'deepseek-flash' : 'glm-4.7');
   expect(body.stream).toBe(true);
   expect(body.thinking).toEqual({ type: 'disabled' });
   expect(body.response_format).toEqual(json ? { type: 'json_object' } : undefined);
 });
-it('does not fall back to a saved Zhipu key when DeepSeek has no key', async () => {
-  const request = vi.fn();
-  vi.stubGlobal('fetch', request);
-  await expect(
-    (async () => {
-      for await (const _ of generate(
-        { AI_PROVIDER: 'deepseek', AI_MODEL: '', ZHIPU_API_KEY: 'saved' },
-        '',
-        '',
-        new AbortController().signal,
-      ))
-        void _;
-    })(),
-  ).rejects.toThrow('未配置');
-  expect(request).not.toHaveBeenCalled();
-});
+it.each(['deepseek', 'gemini', 'zhipu'] as const)(
+  'does not fall back when %s has no key',
+  async (provider) => {
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+    const keyName = {
+      deepseek: 'DEEPSEEK_API_KEY',
+      gemini: 'GEMINI_API_KEY',
+      zhipu: 'ZHIPU_API_KEY',
+    }[provider];
+    const env = { ...keys, AI_PROVIDER: provider, AI_MODEL: '', [keyName]: undefined };
+    expect(createProvider(env).configured).toBe(false);
+    await expect(
+      (async () => {
+        for await (const _ of generate(env, '', '', new AbortController().signal)) void _;
+      })(),
+    ).rejects.toThrow('未配置');
+    expect(request).not.toHaveBeenCalled();
+  },
+);
 
 it.each([false, true])('routes Gemini chat/JSON with its own key (json=%s)', async (json) => {
   const content = json ? '{}' : '中文增量';

@@ -9,7 +9,7 @@ export function normalizeCitationLinks(markdown: string, known: ReadonlySet<stri
   );
 }
 export function citationIds(markdown: string): string[] {
-  return [...new Set([...markdown.matchAll(/\]\(#source-(c\d+)\)/g)].map((m) => m[1]))];
+  return [...new Set([...markdown.matchAll(/\]\(#(?:source[-_=:])?(c\d+)\)/g)].map((m) => m[1]))];
 }
 export function validCitations(markdown: string, captions: Caption[]): string[] {
   const known = new Set(captions.map((c) => c.id));

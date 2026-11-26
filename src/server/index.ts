@@ -1,6 +1,6 @@
 import type { Env } from './env';
 import { body, json, message } from './http';
-import { modelKey } from './ai';
+import { createProvider } from './providers';
 export { ArticleSession } from './session/ArticleSession';
 export { TranscriptCache } from './TranscriptCache';
 export { Quota } from './Quota';
@@ -10,15 +10,16 @@ export default {
     let response: Response;
     try {
       if (!url.pathname.startsWith('/api/')) response = await env.ASSETS.fetch(request);
-      else if (request.method === 'GET' && url.pathname === '/api/config')
+      else if (request.method === 'GET' && url.pathname === '/api/config') {
+        const provider = createProvider(env);
         response = json({
-          provider: env.AI_PROVIDER,
-          model: env.AI_MODEL,
+          provider: provider.name,
+          model: provider.model,
           transcriptProvider: env.SUPADATA_API_KEY ? 'supadata' : 'direct',
           accessRequired: !!env.APP_ACCESS_TOKEN,
-          configured: !!modelKey(env),
+          configured: provider.configured,
         });
-      else {
+      } else {
         if (request.headers.get('origin') && request.headers.get('origin') !== url.origin)
           return json({ error: '请从本站发起请求。' }, 403);
         if (env.APP_ACCESS_TOKEN && request.headers.get('X-Access-Code') !== env.APP_ACCESS_TOKEN)
