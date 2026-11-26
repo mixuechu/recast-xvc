@@ -5,6 +5,7 @@ import { SourcePanel } from './SourcePanel';
 import { ArticleReader } from './ArticleReader';
 import { SummaryDialog } from './SummaryDialog';
 import './style.css';
+import { UpdateNotice } from './UpdateNotice';
 import { EvidenceDialog } from './EvidenceDialog';
 function App() {
   const model = useWorkbench();
@@ -34,6 +35,7 @@ function App() {
           <span className="version">阅读工作台</span>
         </div>
       </header>
+      <UpdateNotice busy={model.busy} reload={model.reload} />
       <div className="workspace">
         <SourcePanel model={model} />
         {sidebar && (

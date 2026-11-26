@@ -44,9 +44,9 @@ export function EvidenceDialog({ model }: { model: Workbench }) {
           <LoaderCircle className="spin" size={22} />
           正在读取原文…
         </div>
-      ) : (
+      ) : evidence.source ? (
         <SourceEvidence key={article?.id} model={model} />
-      )}
+      ) : null}
     </dialog>
   );
 }

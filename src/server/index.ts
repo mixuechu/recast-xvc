@@ -10,7 +10,12 @@ export default {
     let response: Response;
     try {
       if (!url.pathname.startsWith('/api/')) response = await env.ASSETS.fetch(request);
-      else if (request.method === 'GET' && url.pathname === '/api/config') {
+      else if (request.method === 'GET' && url.pathname === '/api/version') {
+        const entry = await env.ASSETS.fetch(new Request(new URL('/index.html', url)));
+        const html = await entry.text();
+        const asset = /<script\b[^>]*\bsrc=["'](\/assets\/[^"']+\.js)["']/i.exec(html)?.[1];
+        response = asset ? json({ asset }) : json({ error: '暂时无法检查更新。' }, 503);
+      } else if (request.method === 'GET' && url.pathname === '/api/config') {
         const provider = createProvider(env);
         response = json({
           provider: provider.name,
@@ -24,6 +29,17 @@ export default {
           return json({ error: '请从本站发起请求。' }, 403);
         if (env.APP_ACCESS_TOKEN && request.headers.get('X-Access-Code') !== env.APP_ACCESS_TOKEN)
           return json({ error: '请输入正确的访问码。' }, 401);
+        // Old open tabs still request all four legacy panels together.
+        if (/^\/api\/sessions\/[a-f0-9]{64}\/(review|recognition|audio)$/.test(url.pathname)) {
+          return json(
+            {
+              code: 'CLIENT_UPDATE_REQUIRED',
+              error:
+                '页面已更新，字幕校对与音频识别已移除。请刷新页面，再从“最近整理”恢复未过期文章；原文依据功能仍保留。',
+            },
+            410,
+          );
+        }
         if (url.pathname === '/api/generate' && request.method === 'POST') {
           const input = await body(request);
           if (!['youtube', 'sample', 'manual'].includes(String(input.mode)))
@@ -78,6 +94,8 @@ export default {
       response = json({ error: message(e) }, 400);
     }
     const headers = new Headers(response.headers);
+    if (headers.get('Content-Type')?.includes('text/html'))
+      headers.set('Cache-Control', 'no-store');
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'no-referrer');
     headers.set(

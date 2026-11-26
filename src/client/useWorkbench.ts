@@ -10,6 +10,7 @@ import {
 import { captionText } from '../domain/captions';
 import { readSSE } from '../protocol/sse';
 import { useApi } from './api';
+import { readReloadDraft, reloadDraftKey } from './reload-draft';
 import { useEvidence } from './hooks/useEvidence';
 import { useSummary } from './hooks/useSummary';
 import { useMobilePanel } from './hooks/useMobilePanel';
@@ -21,10 +22,11 @@ type Config = {
   accessRequired: boolean;
 };
 export function useWorkbench() {
-  const [mode, setMode] = useState<'youtube' | 'sample' | 'manual'>('youtube');
-  const [url, setUrl] = useState('');
-  const [transcript, setTranscript] = useState('');
-  const [requirements, setRequirements] = useState('');
+  const [reloadDraft] = useState(readReloadDraft);
+  const [mode, setMode] = useState<'youtube' | 'sample' | 'manual'>(reloadDraft?.mode ?? 'youtube');
+  const [url, setUrl] = useState(reloadDraft?.url ?? '');
+  const [transcript, setTranscript] = useState(reloadDraft?.transcript ?? '');
+  const [requirements, setRequirements] = useState(reloadDraft?.requirements ?? '');
   const [article, setArticle] = useState<Article | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -97,6 +99,30 @@ export function useWorkbench() {
       setStatus(data.status === 'complete' ? '已完成' : '上次生成已中断');
     } catch (e) {
       if (epoch === restoreEpoch.current) setError((e as Error).message);
+    }
+  };
+  useEffect(() => {
+    if (!reloadDraft) return;
+    const recover = async () => {
+      if (reloadDraft.articleId) await restore(reloadDraft.articleId);
+      setMode(reloadDraft.mode);
+      setUrl(reloadDraft.url);
+      setTranscript(reloadDraft.transcript);
+      setRequirements(reloadDraft.requirements);
+      sessionStorage.removeItem(reloadDraftKey);
+    };
+    void recover();
+  }, [reloadDraft]);
+  const reload = () => {
+    if (busy) return;
+    try {
+      sessionStorage.setItem(
+        reloadDraftKey,
+        JSON.stringify({ mode, url, transcript, requirements, articleId: article?.id }),
+      );
+      window.location.reload();
+    } catch {
+      setError('无法保存当前输入，请先下载稿件并复制输入，再手动刷新。');
     }
   };
   const remember = (data: Article) =>
@@ -279,6 +305,7 @@ export function useWorkbench() {
   };
   return {
     ...summaries,
+    reload,
     evidence,
     startRealExample,
     mode,
