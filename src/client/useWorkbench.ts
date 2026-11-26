@@ -72,6 +72,7 @@ export function useWorkbench() {
   }, [history]);
   const restore = async (id: string) => {
     if (busy) return;
+    // 切换记录或开始生成后，忽略此前恢复请求的迟到响应。
     const epoch = ++restoreEpoch.current;
     setError('');
     setSidebar(false);
@@ -105,6 +106,7 @@ export function useWorkbench() {
     if (!reloadDraft) return;
     const recover = async () => {
       if (reloadDraft.articleId) await restore(reloadDraft.articleId);
+      // restore 会恢复文章原有要求；随后还原刷新前尚未提交的输入。
       setMode(reloadDraft.mode);
       setUrl(reloadDraft.url);
       setTranscript(reloadDraft.transcript);

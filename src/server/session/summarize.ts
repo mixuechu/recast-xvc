@@ -33,6 +33,7 @@ export async function summarize(
     ))
       text += delta;
     signal.throwIfAborted();
+    // 只补试结果校验失败；上游请求错误在此前退出，两次尝试共用总超时。
     try {
       return validateCitedSummary(
         JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')),

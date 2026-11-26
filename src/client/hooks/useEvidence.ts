@@ -27,6 +27,7 @@ export function useEvidence(api: Api, articleId?: string) {
   }, [open]);
   const refresh = useCallback(async () => {
     if (!articleId) return;
+    // 原文属于当前文章，切换文章后不能接收上一文章的迟到结果。
     const current = epoch.current;
     setBusy(true);
     setError('');

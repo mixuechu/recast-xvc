@@ -63,6 +63,7 @@ export async function ensureEvidence(
     const expected = new Set(batch.map((p) => p.id));
     if (!Array.isArray(repairs) || repairs.length !== batch.length)
       throw new Error('引用核对不完整，已保留正文，请重新生成。');
+    // 整批校验通过后才应用并保存，失败时保留此前已完成批次。
     for (const repair of repairs) {
       const ids = repair?.citationIds;
       if (

@@ -56,6 +56,7 @@ export function articleBlocks(markdown: string, preserveLead: boolean): ArticleB
     };
   });
 }
+// 模型只提供正文，讲者和引用仍取自原段落；保留引用不等于证明改写后的语义。
 export function renderBlocks(blocks: ArticleBlock[], texts: ReadonlyMap<string, string>): string {
   return blocks
     .map((block) => {

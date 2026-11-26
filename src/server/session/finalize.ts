@@ -26,6 +26,7 @@ export async function finalizeDraft(
     throw new ProcessingError('初稿含无效的原文编号或引用格式，请重新生成。', false);
   }
   if (markdown !== record.markdown) await checkpoint(record.processingStage!, markdown);
+  // 先调整篇幅，避免为随后会被省略的段落补引用；旧检查点也须重新验收字数。
   const budget = requestedLength(record.requirements);
   if (
     record.processingStage === 'length' ||

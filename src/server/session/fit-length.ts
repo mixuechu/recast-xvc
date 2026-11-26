@@ -80,6 +80,7 @@ export async function fitLength(
     current = applyBlockEdits(blocks, { edits });
     currentTexts = new Map(edits.map((edit) => [edit.id, edit.text.trim()]));
     if (withinLength(readableLength(current), budget)) return current;
+    // 校准的是下一轮给模型的写作预算，最终验收始终使用用户要求的 budget。
     writingBudget = Math.max(
       40,
       Math.round((writingBudget * budget.target) / readableLength(current)),

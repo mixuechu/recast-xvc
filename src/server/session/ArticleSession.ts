@@ -61,6 +61,7 @@ export class ArticleSession extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       return json({ ok: true });
     }
+    // 持久化状态可能来自重启前；没有实例内任务时，按中断稿处理。
     if (stored.status === 'generating' && !this.aborter) {
       stored.status = 'interrupted';
       stored.chapters = splitArticle(stored.markdown);
@@ -192,6 +193,7 @@ export class ArticleSession extends DurableObject<Env> {
                   articleParagraphs(applyOutline(record.markdown, input.requirements)).join('\n\n'),
                   new Set(record.source.captions.flatMap((c) => (c.id ? [c.id] : []))),
                 );
+                // 流式期间的存稿只供保留内容；模型完整结束后才开放继续整理。
                 record.processingStage = 'length';
               }
               const checkpoint = async (stage: ProcessingStage, markdown: string) => {
@@ -225,6 +227,7 @@ export class ArticleSession extends DurableObject<Env> {
               });
             } catch (e) {
               const failure = signal.aborted ? undefined : message(e);
+              // 删除会中止任务；迟到的异常不能把已删除的记录重新写回。
               if (record && !this.deleted) {
                 record.status = 'interrupted';
                 record.failure = failure;
