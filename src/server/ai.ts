@@ -1,4 +1,6 @@
 import { readSSE } from '../protocol/sse';
+import { readGemini } from '../protocol/gemini';
+import { requestModel } from './model-request';
 export type AIEnv = {
   AI_PROVIDER: string;
   AI_MODEL: string;
@@ -30,44 +32,50 @@ export async function* generate(
   const key = modelKey(env);
   if (!key) throw new Error('服务端尚未配置模型密钥，请联系部署者。');
   const model =
-    env.AI_MODEL || (gemini ? 'gemini-2.5-flash' : deepseek ? 'deepseek-flash' : 'glm-4.7');
+    env.AI_MODEL || (gemini ? 'gemini-3.6-flash' : deepseek ? 'deepseek-flash' : 'glm-4.7');
   const endpoint = gemini
-    ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`
+    ? 'https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse'
     : deepseek
       ? 'https://api.deepseek.com/chat/completions'
       : 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(gemini ? { 'x-goog-api-key': key } : { Authorization: `Bearer ${key}` }),
-    },
-    body: JSON.stringify(
-      gemini
-        ? {
-            systemInstruction: { parts: [{ text: system }] },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
+  const response = await requestModel(
+    endpoint,
+    {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(gemini
+          ? { 'x-goog-api-key': key, 'Api-Revision': '2026-05-20' }
+          : { Authorization: `Bearer ${key}` }),
+      },
+      body: JSON.stringify(
+        gemini
+          ? {
+              model,
+              stream: true,
+              store: false,
+              system_instruction: system,
+              input: prompt,
+              generation_config: { max_output_tokens: json ? 6000 : 10000 },
+              ...(json ? { response_format: { type: 'text', mime_type: 'application/json' } } : {}),
+            }
+          : {
+              model,
+              stream: true,
+              thinking: { type: 'disabled' },
               temperature: 0.4,
-              maxOutputTokens: json ? 2400 : 10000,
-              ...(json ? { responseMimeType: 'application/json' } : {}),
+              max_tokens: json ? 2400 : 10000,
+              messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: prompt },
+              ],
+              ...(json ? { response_format: { type: 'json_object' } } : {}),
             },
-          }
-        : {
-            model,
-            stream: true,
-            thinking: { type: 'disabled' },
-            temperature: 0.4,
-            max_tokens: json ? 2400 : 10000,
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: prompt },
-            ],
-            ...(json ? { response_format: { type: 'json_object' } } : {}),
-          },
-    ),
-  });
+      ),
+    },
+    gemini ? 3 : 1,
+  );
   if (!response.ok) {
     await response.body?.cancel();
     if (response.status === 401 || response.status === 403)
@@ -76,6 +84,10 @@ export async function* generate(
     throw new Error(`模型服务暂时不可用（${response.status}），请稍后重试。`);
   }
   if (!response.body) throw new Error('模型未返回响应。');
+  if (gemini) {
+    yield* readGemini(response.body, signal);
+    return;
+  }
   let completed = false;
   for await (const data of readSSE(response.body, signal)) {
     if (data === '[DONE]') {
@@ -84,16 +96,11 @@ export async function* generate(
     }
     const chunk = JSON.parse(data);
     if (chunk.error) throw new Error('模型生成中断，请重试。');
-    const reason = gemini ? chunk.candidates?.[0]?.finishReason : chunk.choices?.[0]?.finish_reason;
+    const reason = chunk.choices?.[0]?.finish_reason;
     if (reason && !['STOP', 'stop'].includes(reason))
       throw new Error('生成未完整结束，请缩短字幕或要求后重试。');
     if (reason === 'STOP' || reason === 'stop') completed = true;
-    const text = gemini
-      ? chunk.candidates?.[0]?.content?.parts
-          ?.filter((p: { thought?: boolean }) => !p.thought)
-          .map((p: { text?: string }) => p.text ?? '')
-          .join('')
-      : chunk.choices?.[0]?.delta?.content;
+    const text = chunk.choices?.[0]?.delta?.content;
     if (text) yield text;
   }
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');

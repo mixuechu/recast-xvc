@@ -5,7 +5,7 @@
 - [在线体验](https://recast-xvc.mixuechu.workers.dev)（访问码由维护者单独提供）
 - [使用说明](docs/USAGE.md) · [架构与代码走读](docs/ARCHITECTURE.md) · [实测记录](docs/VALIDATION.md)
 
-**模型差异：题目指定 Gemini，当前线上使用 DeepSeek `deepseek-flash`，智谱 GLM-4.7 接入及密钥配置保留。** 已实现 Gemini 流式和结构化响应适配、协议测试，但尚无真实 Gemini 账号联调。提交时必须说明并取得认可，或配置 Gemini 后重新验收，不能把其他模型结果称为 Gemini 实测结果。
+当前线上使用 **DeepSeek `deepseek-flash`**，智谱和Gemini接入保留。**题目指定Gemini的差异尚未解决**：普通Flash已通过真实短请求流式测试，但完整视频请求持续返回503，尚未通过完整验收，因此未作为线上默认。密钥只在服务端。详细边界见[实测记录](docs/VALIDATION.md)。
 
 ## 启动与部署
 
@@ -24,18 +24,18 @@ npm run dev
 npx wrangler login
 npx wrangler secret put SUPADATA_API_KEY
 npx wrangler secret put DEEPSEEK_API_KEY
-# 可保留 ZHIPU_API_KEY，切回智谱时使用
+# 可保留 GEMINI_API_KEY 和 ZHIPU_API_KEY，用于测试备用厂商
 npx wrangler secret put APP_ACCESS_TOKEN
 npm run deploy
 ```
 
-切换 Gemini：在 `wrangler.jsonc` 将 `AI_PROVIDER` 设为 `gemini`，`AI_MODEL` 设为账户有权限使用的模型，配置 `GEMINI_API_KEY` 后部署并重新实测。
+默认配置为 `AI_PROVIDER=deepseek`、`AI_MODEL=deepseek-flash`。Gemini测试配置为 `AI_PROVIDER=gemini`、`AI_MODEL=gemini-3.6-flash`、`GEMINI_API_KEY`，通过完整验收后才切换默认；模型列表可读或短请求成功，不等于完整生成可用。
 
 ## 实现说明
 
 **YouTube 字幕。** 服务端优先使用 [Supadata](https://docs.supadata.ai/get-transcript) 的 `native` 模式，只读取视频已有字幕；优先选择英文字幕（无英文时由服务返回可用字幕，并显示实际语言），统一转换毫秒时间轴、分配稳定片段编号、视频字幕限制为150,000字符及6,000片段，手动输入限制为100,000字符。不自动触发音频转录。成功结果按视频缓存24小时，同视频并发合并，失败不缓存。未配置此服务时保留直接读取适配器，但 YouTube 可能拒绝 Cloudflare 出口。可手动导入 SRT、VTT 或文本；不把演示素材或快照冒充目标视频的实时结果。
 
-**模型与流式。** `server/ai.ts` 通过 Fetch 调用 Gemini `streamGenerateContent?alt=sse` 、DeepSeek 或智谱流式接口，统一解析 UTF-8 分片、SSE 增量及结束状态。Worker 将真实增量传给浏览器，Markdown 经 DOMPurify 清洗后渲染，支持停止、断流提示和部分内容保留。
+**模型与流式。** `server/ai.ts` 通过 Fetch 调用 Gemini `interactions?alt=sse`（`store=false`，会话由本应用管理） 、DeepSeek 或智谱流式接口，统一解析 UTF-8 分片、SSE 增量及结束状态。Worker 将真实增量传给浏览器，Markdown 经 DOMPurify 清洗后渲染，支持停止、断流提示和部分内容保留。
 
 **生成要求。** 用户要求作为独立数据传入模型，影响任务、风格、受众、篇幅与重点，不能覆盖事实忠实性。多人素材保留对话，单人讲述不虚构问答。明确章节数量通过纯函数重组已有段落，避免再次调用模型重写；事实质量仍需人工核对。
 

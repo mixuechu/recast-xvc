@@ -57,3 +57,86 @@ it('does not fall back to a saved Zhipu key when DeepSeek has no key', async () 
   ).rejects.toThrow('未配置');
   expect(request).not.toHaveBeenCalled();
 });
+
+it.each([false, true])('routes Gemini chat/JSON with its own key (json=%s)', async (json) => {
+  const content = json ? '{}' : '中文增量';
+  const request = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        `data: ${JSON.stringify({ event_type: 'step.start', index: 0, step: { type: 'model_output' } })}\n\ndata: ${JSON.stringify({ event_type: 'step.delta', index: 0, delta: { type: 'text', text: content } })}\n\ndata: ${JSON.stringify({ event_type: 'interaction.completed', interaction: { status: 'completed' } })}\n\n`,
+      ),
+    );
+  vi.stubGlobal('fetch', request);
+  let result = '';
+  for await (const chunk of generate(
+    { ...keys, AI_PROVIDER: 'gemini', AI_MODEL: '' },
+    'system JSON',
+    'prompt',
+    new AbortController().signal,
+    json,
+  ))
+    result += chunk;
+  expect(result).toBe(content);
+  expect(request.mock.calls[0][0]).toBe(
+    'https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse',
+  );
+  const init = request.mock.calls[0][1];
+  expect(init.headers['x-goog-api-key']).toBe('gemini-secret');
+  expect(init.headers.Authorization).toBeUndefined();
+  const body = JSON.parse(init.body);
+  expect(body.response_format?.mime_type).toBe(json ? 'application/json' : undefined);
+  expect(body.model).toBe('gemini-3.6-flash');
+  expect(body.store).toBe(false);
+  expect(body.stream).toBe(true);
+  expect(init.headers['Api-Revision']).toBe('2026-05-20');
+});
+
+it('bounds Gemini busy retries before consuming a stream', async () => {
+  vi.useFakeTimers();
+  try {
+    const request = vi.fn().mockImplementation(async () => new Response('busy', { status: 503 }));
+    vi.stubGlobal('fetch', request);
+    const result = (async () => {
+      for await (const _ of generate(
+        { ...keys, AI_PROVIDER: 'gemini', AI_MODEL: '' },
+        '',
+        '',
+        new AbortController().signal,
+      )) {
+        /* consume */
+      }
+    })();
+    const assertion = expect(result).rejects.toThrow('503');
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(request).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('cancels Gemini backoff without sending another request', async () => {
+  vi.useFakeTimers();
+  try {
+    const controller = new AbortController();
+    const request = vi.fn().mockResolvedValue(new Response('busy', { status: 503 }));
+    vi.stubGlobal('fetch', request);
+    const result = (async () => {
+      for await (const _ of generate(
+        { ...keys, AI_PROVIDER: 'gemini', AI_MODEL: '' },
+        '',
+        '',
+        controller.signal,
+      )) {
+        /* consume */
+      }
+    })();
+    const assertion = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await assertion;
+    expect(request).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});

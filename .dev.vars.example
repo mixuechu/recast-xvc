@@ -1,8 +1,9 @@
 DEEPSEEK_API_KEY=replace_locally
-# Optional: set AI_PROVIDER=zhipu and AI_MODEL=glm-4.7 to use Zhipu
-# ZHIPU_API_KEY=replace_locally
 SUPADATA_API_KEY=replace_locally
 # Optional: shared access code for the public review deployment
 # APP_ACCESS_TOKEN=choose_a_review_code
-# Gemini: set AI_PROVIDER=gemini and AI_MODEL in wrangler.jsonc
+# Alternatives: change AI_PROVIDER / AI_MODEL in wrangler.jsonc
+# Gemini: gemini / gemini-3.6-flash (requires full live validation before switching)
 # GEMINI_API_KEY=replace_locally
+# Zhipu: zhipu / glm-4.7
+# ZHIPU_API_KEY=replace_locally

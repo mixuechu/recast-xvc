@@ -127,7 +127,7 @@ describe('streaming protocol', () => {
         .mockResolvedValue(
           new Response(
             stream(
-              'data: {"candidates":[{"content":{"parts":[{"text":"回答"}]},"finishReason":"STOP"}]}\n\n',
+              'data: {"event_type":"step.start","index":0,"step":{"type":"model_output"}}\n\ndata: {"event_type":"step.delta","index":0,"delta":{"type":"text","text":"回答"}}\n\ndata: {"event_type":"interaction.completed","interaction":{"status":"completed"}}\n\n',
             ),
           ),
         ),
